@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    image: inventory_app:v1.0
+    container_name: inventory_app
+    ports:
+      - "10000:10000"
+    depends_on:
+      - mysql
+    environment:
+      DB_USER: root
+      DB_PASSWORD: admin
+      DB_NAME: inventory
+      DB_HOST: mysql
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: inventory
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+      - type: bind
+        source: ./docker-entrypoint-initdb.d/setup.sh
+        target: /docker-entrypoint-initdb.d/setup.sh
+        read_only: true # Adicione esta linha
+
+volumes:
+  mysql_data:
