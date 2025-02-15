@@ -1,10 +1,9 @@
 # api-observabilidade em Docker
 API simples em Go usando o mySQL em container
 
-1. Pra rodar todos os arquivos .go ao mesmo tempo dê `go run .` na pasta my-inventory.
-
 ## Ideia de uso
 Colocar a aplicação em um container Docker e deixar o container do mysql fora dele.
+Aqui está o endereço da imagem buildada no dockerhub: `gab796/inventory_app:v1.0`
 
 ## Manipulando a imagem
 
@@ -21,8 +20,6 @@ Ou criando sem uso de cache
 
 ## Verificando o Mysql manualmente
 
-1. Ao reiniciar o PC, o container do sql pode ter ficado parado, então apenas reiniicie o container com `docker start mysql-container`
-
 Para acessar o banco de dados, use o comando:
 `docker exec -it mysql-container mysql -u root -padmin inventory`
 O nome do BD é inventory.
@@ -34,4 +31,4 @@ Haverá uma tabela chamada products
 Para ver os dados da tabela, use o comando:
 `select * from products;`
 
-Deverá ter 5 linhas, de acordo com o arquivo de `setup-inventory.sql`
+Deverá ter 5 linhas

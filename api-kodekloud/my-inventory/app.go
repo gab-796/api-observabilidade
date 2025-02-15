@@ -20,12 +20,12 @@ type App struct {
 func (app *App) Initialise() error { // Método que inicializa
 	connectionString := fmt.Sprintf("%s:%s@tcp(localhost:3306)/%s", DBUser, DBPassword, DBName)
 	var err error
-	app.DB, err = sql.Open("mysql", connectionString)
+	app.DB, err = sql.Open("mysql", connectionString) // Inicializa a conexão com o driver MySQL.
 	if err != nil { // Verifica se houve erro na conexão.
 		return err
 	}
 
-	app.Router = mux.NewRouter().StrictSlash(true)
+	app.Router = mux.NewRouter().StrictSlash(true) // Inicializa o roteador. `go doc github.com/gorilla/mux.Router`
 	return nil
 }
 
