@@ -30,7 +30,7 @@ services:
       - type: bind
         source: ./docker-entrypoint-initdb.d/setup.sh
         target: /docker-entrypoint-initdb.d/setup.sh
-        read_only: true # Adicione esta linha
+        read_only: true
 
 volumes:
   mysql_data:
