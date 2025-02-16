@@ -7,7 +7,7 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mysql
+      app: mysql # nome do svc do MySQL
   template:
     metadata:
       labels:
