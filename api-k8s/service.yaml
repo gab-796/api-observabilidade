@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service
+  namespace: api-app-go
+spec:
+  selector:
+    app: inventory-app
+  ports:
+  - protocol: TCP
+    port: 10000
+    targetPort: 10000
+  type: ClusterIP

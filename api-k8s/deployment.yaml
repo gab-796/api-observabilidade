@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-app
+  namespace: api-app-go
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-app
+  template:
+    metadata:
+      labels:
+        app: inventory-app
+    spec:
+      containers:
+      - name: inventory-app
+        image: gab796/inventory_app:v1.0
+        ports:
+        - containerPort: 10000
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+        env: # Puxando a senha do bd direto do secret.yaml
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: inventory-secrets
+              key: DB_PASSWORD
+        envFrom: # puxando as env vars direto do configmap
+        - configMapRef:
+            name: inventory-config

@@ -1,0 +1,63 @@
+{
+	"info": {
+		"_postman_id": "f4136074-8403-4468-b3ae-f980a3d41cdc",
+		"name": "inventory-k8s-ingress",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "12727291"
+	},
+	"item": [
+		{
+			"name": "GET Products",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://inventory.local/products"
+			},
+			"response": []
+		},
+		{
+			"name": "Get Product",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://inventory.local/product/3"
+			},
+			"response": []
+		},
+		{
+			"name": "Post Product",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"facas\",\n    \"quantity\": 8,\n    \"price\": 450.50\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://inventory.local/product"
+			},
+			"response": []
+		},
+		{
+			"name": "Put request",
+			"request": {
+				"method": "GET",
+				"header": []
+			},
+			"response": []
+		},
+		{
+			"name": "Delete Request",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": "http://inventory.local/product/1"
+			},
+			"response": []
+		}
+	]
+}
