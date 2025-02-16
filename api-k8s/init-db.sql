@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 INSERT INTO products (name, price, quantity) VALUES
-('Product 1', 10.00, 100),
-('Product 2', 20.00, 200),
-('Product 3', 30.00, 300);
+    ('Notebook', 3500.00, 10),
+    ('Mouse', 150.00, 25),
+    ('Teclado', 200.00, 15),
+    ('Monitor', 1200.00, 8),
+    ('Cadeira Gamer', 800.00, 5);
