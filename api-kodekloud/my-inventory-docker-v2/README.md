@@ -1,12 +1,14 @@
 # api-observabilidade em Docker
-API simples em Go usando o mySQL em container
+API de inventário em Go(v1.22) usando o mySQL v8.0 containerizado.  
+ Use o arquivo da collection Postman para poder fazer as chamadas de API e verificar o funcionamento da aplicação.
 
 ## Ideia de uso
-Colocar a aplicação em um container Docker e deixar o container do mysql fora dele.
-Aqui está o endereço da imagem buildada no dockerhub: `gab796/inventory_app:v2.0`
+Colocar a aplicação em um container Docker e deixar o container do mysql fora dele.  
+Aqui está o endereço da imagem buildada no dockerhub:  
+`gab796/inventory_app:v2.0`
 
 ### Uso localmente
-Basta entrar na pasta e executar `go run .`
+Basta entrar na pasta e executar `go run .`  
 OBS: Não é recomendado executar localmente, devido as dependências do BD. Opte pelo uso em docker!
 
 ## Manipulando a imagem
@@ -27,22 +29,22 @@ Porém o ideal é rodar a imagem segurando o terminal, pois assim teremos os log
 ## Verificando o Mysql manualmente
 
 Para acessar o banco de dados, use o comando:
-`docker exec -it mysql-container mysql -u root -padmin inventory`
+`docker exec -it mysql-container mysql -u root -padmin inventory`  
 O nome do BD é inventory.
 
 Para ver as tabelas, use o comando
-`show tables;`
+`show tables;`  
 Haverá uma tabela chamada products
 
-Para ver os dados da tabela, use o comando:
+Para ver os dados da tabela, use o comando  
 `select * from products;`
 
-Deverá ter 5 linhas
+Deverá ter 5 linhas.
 
-ou apenas
+ou apenas  
 `docker exec -it mysql-container mysql -u root -padmin -e "USE inventory; SELECT * FROM products;"`
 
 ## Logrus
 
-Instalando o pacote logrus
+Instalando o pacote logrus  
 `go get github.com/sirupsen/logrus`
