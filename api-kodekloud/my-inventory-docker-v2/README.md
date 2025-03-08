@@ -48,3 +48,16 @@ ou apenas
 
 Instalando o pacote logrus  
 `go get github.com/sirupsen/logrus`
+
+## Processo de build e push da imagem
+
+#### Login na dockerhub
+`docker login`
+
+### Criação da imagem
+`docker build -t gab796/inventory_app:2.0 .`
+
+> Executado dentro da pasta com todos os arquivos go e dockerfile e docker compose.
+
+### Enviando a imagem para o docker hub
+`docker push gab796/inventory_app:v2.0`
