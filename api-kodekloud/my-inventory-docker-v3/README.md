@@ -5,7 +5,7 @@ API de inventário em Go(v1.22) usando o mySQL v8.0 containerizado.
 ## Ideia de uso
 Colocar a aplicação em um container Docker e deixar o container do mysql fora dele.  
 Aqui está o endereço da imagem buildada no dockerhub:  
-`gab796/inventory_app:v3.0`
+`gab796/inventory_app:v2.2`
 
 ### Uso localmente
 Basta entrar na pasta e executar `go run .`  
