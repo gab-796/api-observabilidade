@@ -1,0 +1,42 @@
+services:
+  app:
+    build: .
+    image: inventory_app:v2.2
+    container_name: inventory-app-telemetry
+    ports:
+      - "10000:10000"  # Expondo a porta da aplicação
+      - "2113:2113"    # Expondo a porta de métricas
+    depends_on:
+      mysql:
+        condition: service_healthy  # Aguarda o MySQL estar pronto
+    environment:
+      DB_USER: root
+      DB_PASSWORD: admin
+      DB_NAME: inventory
+      DB_HOST: mysql
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: inventory
+      MYSQL_LOG_ERROR_VERBOSITY: 3  # nivel INFO de log
+      MYSQL_DEBUG: d:t:o,file:stdout  # Ativa o log de depuração
+    ports:
+      - "0:3306" #Deixo para o docker escolher a porta livre.
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - type: bind
+        source: ./docker-entrypoint-initdb.d/setup.sh
+        target: /docker-entrypoint-initdb.d/setup.sh
+        read_only: true
+    healthcheck:  # Garante que o MySQL esteja pronto antes do app iniciar
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  mysql_data:
