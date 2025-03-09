@@ -86,56 +86,32 @@ Quando vc subir a aplicação, basta entrar em
  `localhost:2113/metrics`
 
 O resultado é esse após acessar algumas rotas via Postman.
-# HELP http_requests_total Número total de requisições HTTP recebidas
-# TYPE http_requests_total counter
+//# HELP http_requests_total Número total de requisições HTTP recebidas
+//# TYPE http_requests_total counter
 http_requests_total{method="GET",path="/product/2",status="200"} 1
 http_requests_total{method="GET",path="/products",status="200"} 1
 http_requests_total{method="POST",path="/product",status="201"} 1
 
-# HELP sql_errors_total Número total de erros de SQL
-# TYPE sql_errors_total counter
+//# HELP sql_errors_total Número total de erros de SQL
+//# TYPE sql_errors_total counter
 sql_errors_total 0
 
-# HELP products_in_db Número de produtos no banco de dados
-# TYPE products_in_db gauge
+//# HELP products_in_db Número de produtos no banco de dados
+//# TYPE products_in_db gauge
 products_in_db 6
 
-# HELP http_requests_total Número total de requisições HTTP recebidas
-# TYPE http_requests_total counter
+//# HELP http_requests_total Número total de requisições HTTP recebidas
+//# TYPE http_requests_total counter
 http_requests_total{method="GET",path="/product/5",status="200"} 1
 http_requests_total{method="GET",path="/products",status="200"} 2
 
-# HELP http_active_connections Número de conexões HTTP ativas
-# TYPE http_active_connections gauge
+// # HELP http_active_connections Número de conexões HTTP ativas
+// # TYPE http_active_connections gauge
 http_active_connections 0
 
-# HELP http_request_duration_seconds Duração das requisições HTTP em segundos
-# TYPE http_request_duration_seconds histogram
+// # HELP http_request_duration_seconds Duração das requisições HTTP em segundos
+// # TYPE http_request_duration_seconds histogram
 http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.005"} 1
 http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.01"} 1
 http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.025"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.05"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.1"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.25"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.5"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="1"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="2.5"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="5"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="10"} 1
-http_request_duration_seconds_bucket{method="GET",path="/product/5",le="+Inf"} 1
-http_request_duration_seconds_sum{method="GET",path="/product/5"} 0.001498757
-http_request_duration_seconds_count{method="GET",path="/product/5"} 1
-http_request_duration_seconds_bucket{method="GET",path="/products",le="0.005"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="0.01"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="0.025"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="0.05"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="0.1"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="0.25"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="0.5"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="1"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="2.5"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="5"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="10"} 2
-http_request_duration_seconds_bucket{method="GET",path="/products",le="+Inf"} 2
-http_request_duration_seconds_sum{method="GET",path="/products"} 0.000957516
-http_request_duration_seconds_count{method="GET",path="/products"} 2
+http_request_duration_seconds_bucket{me# HELP go_gc_duration_seconds A summary of the wall-time pause (stop-the-world) duration in garbage collection cycles.
