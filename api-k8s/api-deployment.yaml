@@ -15,9 +15,12 @@ spec:
     spec:
       containers:
       - name: inventory-app
-        image: gab796/inventory_app:v1.0 # v2.0 para logs, v3.0 para logs e métricas e v4.0 para as 3 telemetrias.
+        image: gab796/inventory_app:v2.2.1
         ports:
         - containerPort: 10000
+          name: http
+        - containerPort: 2113 # Deixando claro pro k8s que a porta 2113 será usada pelo service de metrics.
+          name: metrics
         resources:
           limits:
             memory: "128Mi"

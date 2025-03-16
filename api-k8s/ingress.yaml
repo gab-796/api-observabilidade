@@ -3,8 +3,6 @@ kind: Ingress
 metadata:
   name: inventory-ingress
   namespace: api-app-go
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
@@ -18,3 +16,10 @@ spec:
             name: inventory-service
             port:
               number: 10000
+      - path: /metrics # Path exclusivo pro /metrics ser usado com o ingress
+        pathType: Prefix
+        backend:
+          service:
+            name: inventory-app-metrics-service # Nome do seu Service de métricas
+            port:
+              number: 2113                # Porta do Service de métricas

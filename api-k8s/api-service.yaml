@@ -10,4 +10,9 @@ spec:
   - protocol: TCP
     port: 10000
     targetPort: 10000
+    name: http # service da aplicação
+  #- protocol: TCP Ao invés de usar esse bloco, vou criar um service dedicado ao /metrics.
+  #  port: 2113
+  #  targetPort: 2113
+  #  name: metrics # Service do /metrics
   type: ClusterIP

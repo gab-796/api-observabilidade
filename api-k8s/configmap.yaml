@@ -12,3 +12,4 @@ data:
   MYSQL_DATABASE: inventory
 
 # Aqui fica armazenado todas as env vars que o container precisa.
+# É uma forma mais organizada de usar as env vars., pois se não ficariam todas no deployment.yaml. na seção de env.
