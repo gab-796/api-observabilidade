@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: inventory-app
-        image: gab796/inventory_app:v1.0
+        image: gab796/inventory_app:v1.0 # v2.0 para logs, v3.0 para logs e métricas e v4.0 para as 3 telemetrias.
         ports:
         - containerPort: 10000
         resources:

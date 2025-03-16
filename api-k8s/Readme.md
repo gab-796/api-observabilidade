@@ -5,22 +5,26 @@ A ideia é usar a imagem docker criada anteriormente para criação da API em 2 
 Há um configmap apenas para iniciar junto do pod do mysql onde ele cria o database, a tabela products e ainda inclui 5 produtos.
 
 
-## Dependências
-É necessário ter o nginx ingress controller instalado e incluir o DNS `inventory.local` no seu `/etc/hosts` para que o ingress funcione. \
+## Versões da imagem docker da app
+- A versão incial, v1.0 conta apenas com a aplicação e o BD, sem telemetria alguma.
+- A versão 2.0 tem suporte a logs, via Logrus.
+- Já a v2.1 tem suporte a logs e métrica http_requests_total em formato OpenMetrics.
+- A v2.2 tem suporte a Log e várias métricas.
+- A v2.3 contém as 3 telemetrias, com envio de traces pelo Opentelemetry.
 
-O cluster kind local já vem com o ingress instalado, então só precisa adicionar o DNS junto dos outros nomes.
+
+O arquivo a ser configurada a versão é o `api-deployment.yaml`
+
+## Dependências
+1. Ter o cluster kins instalado(Execute o Makefile)
+2. É necessário ter o nginx ingress controller instalado e incluir o DNS `inventory.local` no seu `/etc/hosts` para que o ingress funcione.
 
 A versão do k8s usada na criação desses manifestos é a `v1.29`
 
 ## Instalação
 Dentro da pasta, basta executar:
-1. Criação do namespace: `kubectl create ns api-app-go`
-2. Instalação dos manifestos: `kubectl apply -f .`
-
-
-## Detalhes
-Essa aplicação em Go não emite log algum, pois está na V0. \
-A v1 contará com telemetria!
+1. Instalação dos manifestos: `kubectl apply -f .`
+[WIP] Colocar tudo num chart e incluir a linha no makefile :)
 
 ## Collection do Postman
 
