@@ -86,7 +86,7 @@ install-dependencies: install-cilium install-metrics-server install-metallb inst
     ifneq ($(CLUSTER_EXISTS), $(CLUSTER_NAME))
         # Ensure the creation of ipv4 network
 		docker network inspect kind >/dev/null 2>&1 || docker network create kind
-		kind create cluster --name $(CLUSTER_NAME) --config=kind/config.yaml --wait 10s
+		kind create cluster --name $(CLUSTER_NAME) --config=cluster/config.yaml --wait 10s
     else
 		kubectl cluster-info --context kind-$(CLUSTER_NAME)
     endif
