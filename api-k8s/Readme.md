@@ -16,7 +16,7 @@ Há um configmap apenas para iniciar junto do pod do mysql onde ele cria o datab
 O arquivo a ser configurada a versão é o `api-deployment.yaml`
 
 ## Dependências
-1. Ter o cluster kins instalado(Execute o Makefile)
+1. Ter o cluster kind instalado(Execute o Makefile dentro da pasta cluster: `make create-cluster`)
 2. É necessário ter o nginx ingress controller instalado e incluir o DNS `inventory.local` no seu `/etc/hosts` para que o ingress funcione.
 
 A versão do k8s usada na criação desses manifestos é a `v1.29`
@@ -26,7 +26,7 @@ Dentro da pasta, basta executar:
 1. `k apply -f namespace.yaml`
 2. Instalação dos manifestos: `kubectl apply -f .`
 OU
-digite `make` para usar o makefile ;)
+digite `make all` para usar o makefile ;)
 
 ## Collection do Postman
 Todos os métodos da API estão gravados na collection chamada `api-k8s-collection.json`, basta importar no seu Postman.
