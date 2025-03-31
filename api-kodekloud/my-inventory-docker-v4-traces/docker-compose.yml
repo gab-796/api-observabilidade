@@ -1,0 +1,60 @@
+services:
+  app:
+    build: .
+    image: inventory_app:v2.3
+    container_name: inventory-app-telemetry
+    ports:
+      - "10000:10000"  # Expondo a porta da aplicação
+      - "2113:2113"    # Expondo a porta de métricas
+    depends_on:
+      mysql:
+        condition: service_healthy  # Aguarda o MySQL estar pronto
+      jaeger:  # Adiciona dependência do Jaeger
+        condition: service_started #Espera o Jaeger iniciar
+    environment:
+      DB_USER: root
+      DB_PASSWORD: admin
+      DB_NAME: inventory
+      DB_HOST: mysql
+      OTEL_SERVICE_NAME: inventory-app-otel # Define o nome do serviço para o OpenTelemetry
+      OTEL_EXPORTER_OTLP_ENDPOINT: "jaeger:4318"  # Endereço do coletor OTLP do Jaeger (dentro da rede Docker)
+      #OTEL_EXPORTER_OTLP_PROTOCOL: "grpc" #Se usar a porta 4317, use grpc
+      OTEL_EXPORTER_OTLP_INSECURE: "true" # Desabilita TLS (para desenvolvimento local)
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: inventory
+      MYSQL_LOG_ERROR_VERBOSITY: 3  # nivel INFO de log
+      MYSQL_DEBUG: d:t:o,file:stdout  # Ativa o log de depuração
+    ports:
+      - "0:3306" #Deixo para o docker escolher a porta livre.
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - type: bind
+        source: ./docker-entrypoint-initdb.d/setup.sh
+        target: /docker-entrypoint-initdb.d/setup.sh
+        read_only: true
+    healthcheck:  # Garante que o MySQL esteja pronto antes do app iniciar
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  jaeger:  # Adiciona o serviço Jaeger
+    image: jaegertracing/all-in-one:1.67.0 # Imagem contém agent, colector, query, tudo num binario. bom pra testes local.
+    container_name: jaeger
+    ports:
+      - "16686:16686"  # UI do Jaeger --> localhost:16686
+      - "4318:4318"    # gRPC endpoint (OTLP - HTTP)
+      - "4317:4317"    # gRPC endpoint
+      - "14268:14268"  # Porta legada  para o coletor Jaeger (HTTP)
+      - "14250:14250"  # Porta atual para o coletor Jaeger (HTTP)
+    environment:
+        COLLECTOR_OTLP_ENABLED: "true" # Habilita o coletor OTLP.
+
+volumes:
+  mysql_data:

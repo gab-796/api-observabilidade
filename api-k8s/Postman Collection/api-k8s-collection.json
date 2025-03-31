@@ -1,7 +1,7 @@
 {
 	"info": {
-		"_postman_id": "f4136074-8403-4468-b3ae-f980a3d41cdc",
-		"name": "inventory-k8s-ingress",
+		"_postman_id": "cc14356e-fd41-4e28-898d-2b0f25d45e4c",
+		"name": "inventory-k8s-ingress-k8s",
 		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
 		"_exporter_id": "12727291"
 	},
@@ -25,7 +25,7 @@
 			"response": []
 		},
 		{
-			"name": "Post Product",
+			"name": "Add Product",
 			"request": {
 				"method": "POST",
 				"header": [],
@@ -43,15 +43,25 @@
 			"response": []
 		},
 		{
-			"name": "Put request",
+			"name": "Update Product",
 			"request": {
-				"method": "GET",
-				"header": []
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"soundbar\",\n    \"price\": 150.00,\n    \"quantity\": 2\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://inventory.local/product/1"
 			},
 			"response": []
 		},
 		{
-			"name": "Delete Request",
+			"name": "Delete Product",
 			"request": {
 				"method": "DELETE",
 				"header": [],
