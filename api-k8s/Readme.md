@@ -16,9 +16,9 @@ Há um configmap apenas para iniciar junto do pod do mysql onde ele cria o datab
 O arquivo a ser configurada a versão é o `api-deployment.yaml`
 
 ## Dependências
-1. Ter o cluster kind instalado(Execute o Makefile dentro da pasta cluster: `make create-cluster`)
-2. É necessário ter o nginx ingress controller instalado e incluir o DNS `inventory.local` no seu `/etc/hosts` para que o ingress funcione, da seguinte forma:  
-`172.18.0.0 inventory.local`
+0. Ter o kind e o Docker instalado
+1. Instalar o cluster kind de Observabilidade (Execute o Makefile na pasta kind-cluster)
+2. É necessário ter o nginx ingress controller instalado e incluir o DNS `inventory.local` no seu `/etc/hosts` para que o ingress funcione.
 
 A versão do k8s usada na criação desses manifestos é a `v1.29`
 
@@ -26,8 +26,10 @@ A versão do k8s usada na criação desses manifestos é a `v1.29`
 Dentro da pasta, basta executar:
 1. `k apply -f namespace.yaml`
 2. Instalação dos manifestos: `kubectl apply -f .`
+
 OU
-digite `make all` para usar o makefile ;)
+
+digite `make` para usar o makefile ;)
 
 ## Collection do Postman
 Todos os métodos da API estão gravados na collection chamada `api-k8s-collection.json`, basta importar no seu Postman.
@@ -36,7 +38,7 @@ Todos os métodos da API estão gravados na collection chamada `api-k8s-collecti
 Basta abrir o Postman e importar a collection.
 Repare que elas usam o ingress como parte do path(inventory.local)
 
-Para verificar o `/metrics`  
+Para abrir o `/metrics`:  
 `inventory.local/metrics`
 
 ### Checando a saúde do BD
@@ -46,5 +48,7 @@ exemplo: `k exec -it mysql-669586f559-dr7jw -- mysql -u root -padmin -e "USE inv
 
 ## Destruição do ambiente
 Delete o ns e todos os seus recursos com `k delete ns api-app-go`
+
 OU
+
 `make destroy`
