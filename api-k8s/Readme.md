@@ -17,7 +17,8 @@ O arquivo a ser configurada a versão é o `api-deployment.yaml`
 
 ## Dependências
 1. Ter o cluster kind instalado(Execute o Makefile dentro da pasta cluster: `make create-cluster`)
-2. É necessário ter o nginx ingress controller instalado e incluir o DNS `inventory.local` no seu `/etc/hosts` para que o ingress funcione.
+2. É necessário ter o nginx ingress controller instalado e incluir o DNS `inventory.local` no seu `/etc/hosts` para que o ingress funcione, da seguinte forma:  
+`172.18.0.0 inventory.local`
 
 A versão do k8s usada na criação desses manifestos é a `v1.29`
 
@@ -35,7 +36,7 @@ Todos os métodos da API estão gravados na collection chamada `api-k8s-collecti
 Basta abrir o Postman e importar a collection.
 Repare que elas usam o ingress como parte do path(inventory.local)
 
-Para verificar o `/metrics`
+Para verificar o `/metrics`  
 `inventory.local/metrics`
 
 ### Checando a saúde do BD
