@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: inventory-app
-        image: gab796/inventory_app:v2.2.1
+        image: gab796/inventory_app:v3.1
         ports:
         - containerPort: 10000
           name: http
@@ -28,7 +28,7 @@ spec:
           requests:
             memory: "64Mi"
             cpu: "250m"
-        env: # Puxando a senha do bd direto do secret.yaml
+        env: # Puxando a senha do bd direto do api-secret.yaml
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:

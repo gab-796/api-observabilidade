@@ -11,6 +11,8 @@ Há um configmap apenas para iniciar junto do pod do mysql onde ele cria o datab
 - A v2.2 tem suporte a Log e várias métricas.
 - A v2.2.1 contém a imagem alpine:latest com suporte a shell nos containers da aplicação.
 - A v2.3 contém as 3 telemetrias, com envio de traces pelo Opentelemetry.
+- A v3.0 conta com trace via OtelCollector enviando pro DD da forma mais simples possível, mas só funciona em Docker
+- v3.1 está com o otelexporter endpoint corrigido na main.go para que funcione tanto no Docker quanto no k8s.
 
 
 O arquivo a ser configurada a versão é o `api-deployment.yaml`
@@ -52,3 +54,7 @@ Delete o ns e todos os seus recursos com `k delete ns api-app-go`
 OU
 
 `make destroy`
+
+## Dependências da v3.0
+- Crie a secret com a sua apikey do DD:
+`kubectl create secret generic datadog-api-key --from-literal=DD_API_KEY_GO_LAB=sua_chave_de_api_aqui`

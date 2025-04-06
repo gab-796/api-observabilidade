@@ -1,0 +1,107 @@
+{
+	"info": {
+		"_postman_id": "15f7ee0f-ece6-40d6-b6b1-467c4aafedbc",
+		"name": "my-inventory-Docker",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "12727291"
+	},
+	"item": [
+		{
+			"name": "GET products",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://localhost:10000/products"
+			},
+			"response": [
+				{
+					"name": "GET products",
+					"originalRequest": {
+						"method": "GET",
+						"header": [],
+						"url": "http://localhost:10000/products"
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "plain",
+					"header": [
+						{
+							"key": "Date",
+							"value": "Sat, 15 Feb 2025 19:30:33 GMT"
+						},
+						{
+							"key": "Content-Length",
+							"value": "267"
+						},
+						{
+							"key": "Content-Type",
+							"value": "text/plain; charset=utf-8"
+						}
+					],
+					"cookie": [],
+					"body": "[{\"id\":1,\"name\":\"Notebook\",\"quantity\":10,\"price\":3500},{\"id\":2,\"name\":\"Mouse\",\"quantity\":25,\"price\":150},{\"id\":3,\"name\":\"Teclado\",\"quantity\":15,\"price\":200},{\"id\":4,\"name\":\"Monitor\",\"quantity\":8,\"price\":1200},{\"id\":5,\"name\":\"Cadeira Gamer\",\"quantity\":5,\"price\":800}]\n"
+				}
+			]
+		},
+		{
+			"name": "Get Product",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://localhost:10000/product/2"
+			},
+			"response": []
+		},
+		{
+			"name": "Post product",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"facas\",\n    \"quantity\": 8,\n    \"price\": 450.50\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://localhost:10000/product"
+			},
+			"response": []
+		},
+		{
+			"name": "Put request",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"name\": \"soundbar\",\n    \"price\": 150.00,\n    \"quantity\": 2\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://localhost:10000/product/10"
+			},
+			"response": []
+		},
+		{
+			"name": "Delete Request",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": "http://localhost:10000/product/10"
+			},
+			"response": []
+		}
+	]
+}

@@ -12,14 +12,25 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 )
+// sendError e sendResponse são funções auxiliares projetadas para padronizar a forma como sua aplicação Go envia respostas HTTP, tanto em caso de erro quanto em caso de sucesso.
 
-// --- Funções auxiliares (sendError, sendResponse)
+/*
+w http.ResponseWriter: Este é o objeto padrão do Go para escrever a resposta HTTP que será enviada de volta ao cliente (navegador, API client, etc.).  É através dele que você define o código de status, cabeçalhos e o corpo da resposta.
+status int: Este é o código de status HTTP que você deseja enviar (por exemplo, 400 Bad Request, 500 Internal Server Error, 404 Not Found, etc.).  Esses códigos indicam ao cliente o resultado da requisição.
+err error: Este é o objeto de erro Go que contém informações sobre o erro que ocorreu.
+w.WriteHeader(status): Esta linha define o código de status HTTP da resposta. É crucial definir o código de status antes de escrever qualquer coisa no corpo da resposta.
+
+json.NewEncoder(w): Cria um novo codificador JSON que escreverá diretamente no http.ResponseWriter (w). Isso significa que a saída JSON será enviada como o corpo da resposta HTTP.
+map[string]string{"error": err.Error()}: Cria um mapa (um dicionário em outras linguagens) que tem uma única chave chamada "error". O valor associado a essa chave é a mensagem do erro, obtida através de err.Error(). Isso é importante: você está enviando apenas a mensagem de erro, não o objeto de erro completo (que poderia conter informações sensíveis ou detalhes de implementação).
+.Encode(...): Codifica o mapa como JSON e o escreve no http.ResponseWriter
+*/
 
 func sendError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 }
+
 
 func sendResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json") // Define o content type

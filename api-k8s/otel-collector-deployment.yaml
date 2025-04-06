@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: api-app-go
+  labels:
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.123.0
+          command: ["/otelcol-contrib", "--config=/conf/otel-collector-config.yaml"]
+          env:
+            - name: DD_API_KEY_GO_LAB
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-api-key # Nome do Secret k8s
+                  key: DD_API_KEY_GO_LAB # Chave dentro do Secret
+          ports:
+            - containerPort: 4317 # Porta do receptor OTLP gRPC
+              name: otlp-grpc
+            - containerPort: 4318 # Porta do receptor OTLP HTTP (opcional)
+              name: otlp-http
+            - containerPort: 13133 # porta usada pelo healthcheck, liveness e readiness.
+              name: health
+          volumeMounts:
+            - name: config-vol
+              mountPath: /conf
+          resources:
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+            requests:
+              cpu: "0.5"
+              memory: "128Mi"
+          #livenessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: 13133 # Porta padrão do health check do coletor
+          #  initialDelaySeconds: 75
+          #  periodSeconds: 20
+          #  failureThreshold: 5
+          #  timeoutSeconds: 5
+          #readinessProbe:
+          #  httpGet:
+          #    path: /
+          #    port: 13133
+          #  initialDelaySeconds: 50
+          #  periodSeconds: 10
+          #  failureThreshold: 5
+          #  timeoutSeconds: 5
+      volumes:
+        - name: config-vol
+          configMap:
+            name: otel-collector-config

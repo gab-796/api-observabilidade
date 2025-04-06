@@ -8,17 +8,20 @@ import (
 	"sync"
 	"time"
 
-	"example.com/my-inventory/semconv"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var log = logrus.New()
@@ -78,57 +81,31 @@ func NewResponseWriterWrapper(w http.ResponseWriter) *ResponseWriterWrapper {
 	return &ResponseWriterWrapper{w, http.StatusOK} // Status padrão
 }
 
-/// --- Middleware (agora com tracing!) ---
-
+// --- Middleware (modificado para incluir o histograma) ---
 func prometheusMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wrappedWriter := NewResponseWriterWrapper(w)
 		startTime := time.Now()
 
-		activeConnections.Inc()
-
-		// --- Criação do Span (OpenTelemetry) ---
-		ctx := r.Context() // Obtém o contexto da requisição
-		ctx, span := otel.Tracer("http-middleware").Start(
-			ctx, // Contexto pai
-			fmt.Sprintf("%s %s", r.Method, r.URL.Path), // Nome do span
-			trace.WithAttributes(
-				semconv.HTTPMethodKey.String(r.Method),                     // Use o código gerado
-				semconv.HTTPRouteKey.String(r.URL.Path),                    // Use o código gerado
-				semconv.NetPeerIPKey.String(r.RemoteAddr),                  // Use o código gerado
-				semconv.SpanKindKey.String(string(semconv.SpanKindServer)), // Use o código gerado
-			),
-		)
-		defer span.End()
-
-		r = r.WithContext(ctx) // Propaga o contexto
-
-		// --- Fim da Criação do Span ---
-
+		activeConnections.Inc() // Incrementa no início da requisição
 		next.ServeHTTP(wrappedWriter, r)
-
-		activeConnections.Dec()
+		activeConnections.Dec() // Decrementa no final da requisição
 
 		duration := time.Since(startTime)
 		statusCode := wrappedWriter.statusCode
 
-		// --- Atualização do Span ---
-		span.SetStatus(codeFromHTTPStatus(statusCode), "")
-		span.SetAttributes(semconv.HTTPStatusCodeKey.Int(statusCode))
-
-		// --- Métricas do Prometheus (sem alterações) ---
 		httpRequestsTotal.With(prometheus.Labels{
 			"path":   r.URL.Path,
 			"method": r.Method,
 			"status": fmt.Sprintf("%d", statusCode),
 		}).Inc()
 
+		// Registra a duração no histograma
 		httpRequestDuration.With(prometheus.Labels{
 			"path":   r.URL.Path,
 			"method": r.Method,
-		}).Observe(duration.Seconds())
+		}).Observe(duration.Seconds()) // Observe em segundos!
 
-		// --- Logging (com traceID e spanID) ---
 		log.WithFields(logrus.Fields{
 			"path":        r.URL.Path,
 			"method":      r.Method,
@@ -136,68 +113,41 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 			"duration_ms": duration.Milliseconds(),
 			"remote_addr": r.RemoteAddr,
 			"user_agent":  r.UserAgent(),
-			"trace_id":    span.SpanContext().TraceID().String(),
-			"span_id":     span.SpanContext().SpanID().String(),
 		}).Info("Requisição HTTP processada")
 	})
-}
-
-// initTracerProvider inicializa o TracerProvider do OpenTelemetry, que cria os tracers!
-func initTracerProvider() (*trace.TracerProvider, error) {
-	ctx := context.Background()
-
-	// Cria um novo exportador OTLP para enviar traces para o Jaeger.
-	exporter, err := otlptracehttp.New(ctx,
-		// Configurações do exportador.  Usamos as variáveis de ambiente
-		// para tornar a configuração mais flexível.
-		otlptracehttp.WithEndpoint(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")), // Endereço do coletor
-		otlptracehttp.WithInsecure(),                                         // Sem TLS (para desenvolvimento)
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create exporter: %w", err)
-	}
-
-	// Define atributos que serão adicionados a todos os spans.
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(os.Getenv("OTEL_SERVICE_NAME")), // Nome do serviço
-			attribute.String("environment", "development"),                // Exemplo de atributo adicional
-		),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
-
-	// Cria o TracerProvider.
-	tracerProvider := trace.NewTracerProvider(
-		trace.WithBatcher(exporter), // Usa o exportador OTLP.
-		trace.WithResource(res),     // Define os atributos.
-	)
-	return tracerProvider, nil
 }
 
 func init() {
 	log.SetLevel(logrus.InfoLevel)
 	log.SetFormatter(&logrus.JSONFormatter{})
 	log.SetOutput(os.Stdout)
-
-	// Inicializa o TracerProvider
-	tp, err := initTracerProvider()
-	if err != nil {
-		log.Fatal(err) // Erro crítico: não podemos continuar sem tracing
-	}
-
-	// Define o TracerProvider global.  Isso permite que outras partes do
-	// seu código acessem o tracer usando otel.Tracer("nome").
-	otel.SetTracerProvider(tp)
 }
 
 func main() {
+	// Define o endpoint do OTLP a partir de uma variável de ambiente
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
+		if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+			endpoint = "otel-collector-service.api-app-go:4317" // Usado em ambiente k8s com ns api-app-go
+		} else {
+			endpoint = "otel-collector:4317" // Usado em ambiente Docker, com o container otel-collector e a porta grpc.
+		}
+	}
+	// Inicialização do OpenTelemetry (apenas para traces)
+	tp, err := tracerProvider(endpoint) // Ao invés de usar hardcoded, usamos a variável de ambiente endpoint.
+	if err != nil {
+		log.WithError(err).Fatal("Erro ao inicializar o OpenTelemetry")
+	}
+
+	defer func() { // garante que o TracerProvider encerre corretamente e que todos os spans pendentes sejam enviados.
+		_ = tp.Shutdown(context.Background())
+	}()
+
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+
 	var wg sync.WaitGroup
-	wg.Add(1)
+	wg.Add(2) // Incrementando para 2 goroutines
 
 	// Inicia o servidor de métricas
 	go func() {
@@ -211,16 +161,16 @@ func main() {
 	}()
 
 	app := App{}
-	err := app.Initialise()
+	err = app.Initialise()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Inicia a aplicação principal
 	go func() {
-		defer wg.Done() // Sinaliza quando a goroutine do servidor terminar
+		defer wg.Done()
 		log.Info("Aplicação iniciada na porta :10000")
-		if err := http.ListenAndServe(":10000", app.Router); err != nil && err != http.ErrServerClosed {
+		if err := http.ListenAndServe(":10000", otelhttp.NewHandler(app.Router, "app")); err != nil && err != http.ErrServerClosed {
 			log.WithError(err).Fatal("Erro ao iniciar o servidor da aplicação")
 		}
 	}()
@@ -228,16 +178,29 @@ func main() {
 	wg.Wait()
 }
 
-// Função auxiliar para converter status code HTTP para o código do OpenTelemetry
-func codeFromHTTPStatus(status int) codes.Code {
-	switch {
-	case status < 400:
-		return codes.Ok // 1xx, 2xx, 3xx são considerados "Ok"
-	case status >= 400 && status < 500:
-		return codes.Error // 4xx são erros, mas não afetam o status do span "principal"
-	case status >= 500:
-		return codes.Error // 5xx são erros
-	default:
-		return codes.Unset // Status desconhecido
+// Cria a funcão de tracerProvider: Essa função conecta ao endpoint do OTLP.
+func tracerProvider(endpoint string) (*sdktrace.TracerProvider, error) {
+	ctx := context.Background()
+
+	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, err
 	}
+
+	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	if err != nil {
+		return nil, err
+	}
+
+	resource := resource.NewWithAttributes(
+		semconv.SchemaURL,
+		semconv.ServiceName("inventory-app"), // Aqui é definido o nome do serviço que vai aparecer na aba de traces do DD.
+	)
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(traceExporter),
+		sdktrace.WithResource(resource),
+	)
+
+	return tp, nil
 }
