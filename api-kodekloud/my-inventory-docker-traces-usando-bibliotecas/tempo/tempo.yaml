@@ -1,0 +1,28 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3200 # Porta usada para configurar o DS do Tempo no Grafana. Expoe ela pra fora do container.
+  grpc_listen_port: 9095 # Porta onde o servidor do Tempo escuta chamadas administrativas e internas, ou seja, de outros componentes do Tempo.
+  log_level: warn
+
+distributor:
+  receivers: # Entrada de traces no Tempo. Configurando 0.0.0.0 ele aceita qualquer IP de origem.
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317 # Qualquer IP que enviar usando o protocolo gRPC pela 4317 será recebido pelo Tempo. Porta deve ser igual a
+        http: # do endpoint no exporter no arquivo do otel-collector.config.yaml
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  trace_idle_period: 10s
+  max_block_bytes: 5242880
+  max_block_duration: 5m
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo

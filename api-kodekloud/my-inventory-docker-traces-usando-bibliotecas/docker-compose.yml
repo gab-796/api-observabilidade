@@ -1,0 +1,115 @@
+services:
+  app:
+    build: .
+    image: inventory_app:v3.2
+    container_name: inventory-app-telemetry-container
+    ports:
+      - "10000:10000" # Expondo a porta da aplicação
+      - "2113:2113" # Expondo a porta de métricas
+    depends_on:
+      mysql:
+        condition: service_healthy # Aguarda o MySQL estar pronto
+      otel-collector: #Adicionando dependencia ao collector
+        condition: service_started
+    environment:
+      DB_USER: root
+      DB_PASSWORD: admin
+      DB_NAME: inventory
+      DB_HOST: mysql
+    networks:
+      - observability-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: inventory
+      MYSQL_LOG_ERROR_VERBOSITY: 2 # nivel INFO de log:3 e warn:2
+      MYSQL_DEBUG: d:t:o,file:stdout # Ativa o log de depuração
+    ports:
+      - "0:3306" #Deixo para o docker escolher a porta livre.
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - type: bind
+        source: ./docker-entrypoint-initdb.d/setup.sh
+        target: /docker-entrypoint-initdb.d/setup.sh
+        read_only: true
+    healthcheck: # Garante que o MySQL esteja pronto antes do app iniciar
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - observability-network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0-amd64 # otel da comunidade com suporte mais amplo a exporters.
+    container_name: otel-collector # Nome deve permanecer assim pois está cadastrado no main.go dessa forma.
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    #environment:
+    #  DD_API_KEY_GO_LAB: "${DD_API_KEY_GO_LAB}" # Vai pegar do arquivo .env
+    volumes:
+      - ./otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    #ports:
+    #  - 1888:1888 # pprof extension
+    #  - 8888:8888 # Prometheus metrics exposed by the Collector
+    #  - 13133:13133 # health_check extension
+    #  - 4317:4317 # OTLP gRPC receiver, mas nunca exponha ela e a 4318, pois são usadas internamente apenas.
+    networks:
+      - observability-network
+    depends_on:
+      tempo:
+        condition: service_started
+
+  init-tempo: # Retirado do exemplo: https://github.com/grafana/tempo/blob/main/example/docker-compose/local/docker-compose.yaml
+    image: &tempoImage grafana/tempo:2.6.0
+    container_name: init-container
+    user: root
+    entrypoint:
+      - "chown"
+      - "10001:10001"
+      - "/var/tempo"
+    volumes:
+      - ./tempo/tempo-data:/var/tempo
+    networks:
+      - observability-network
+
+  tempo:
+    image: grafana/tempo:2.6.0 # Versão do Tempo
+    container_name: tempo-container
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml
+      - ./tempo/tempo-data:/var/tempo
+    ports:
+      - "3200" # porta usada fora do container, aberta pra uso no grafana ao configurar o DS do Tempo. Não expor as portas internas 4317 e 4318!
+    networks:
+      - observability-network
+    depends_on:
+      - init-tempo
+
+  grafana: # Facilitar a visualização de traces
+    image: grafana/grafana:11.5.2
+    container_name: grafana-container
+    volumes:
+      - ./tempo/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_LOG_LEVEL=warn # limita os logs no terminal relacionado ao container do Grafana
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor metricsSummary
+      - GF_INSTALL_PLUGINS=https://storage.googleapis.com/integration-artifacts/grafana-exploretraces-app/grafana-exploretraces-app-latest.zip;grafana-traces-app
+    ports:
+      - "3000:3000"
+    networks:
+      - observability-network
+
+volumes:
+  mysql_data:
+
+networks:
+  observability-network:
+    driver: bridge
