@@ -1,0 +1,63 @@
+# Configuração básica para Pyroscope 1.13.0 com shutdown rápido
+target: all
+
+# Configuração do servidor
+server:
+  http_listen_port: 4040
+  grpc_listen_port: 4041
+  log_level: warn
+  # Timeout mais baixo para shutdown rápido
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 30s
+  grpc_server_max_recv_msg_size: 4194304
+  grpc_server_max_send_msg_size: 4194304
+
+# Configuração de armazenamento
+storage:
+  backend: filesystem
+  filesystem:
+    dir: /var/lib/pyroscope
+
+# Configuração do distributor
+distributor:
+  ring:
+    kvstore:
+      store: memberlist
+
+# Configuração do ingester (otimizada para shutdown rápido)
+ingester:
+  lifecycler:
+    num_tokens: 512
+    heartbeat_period: 5s
+    join_after: 10s
+    # Reduzir tempos para shutdown mais rápido
+    observe_period: 5s
+    final_sleep: 5s  # Reduzido de 15s para 5s
+    # Timeout menor para operações
+    heartbeat_timeout: 10s
+
+# Configuração do querier
+querier: {}
+
+# Configuração do compactor (otimizada)
+compactor:
+  data_dir: /var/lib/pyroscope/compactor
+  # Intervalo maior para reduzir atividade durante shutdown
+  compaction_interval: 4h
+
+# Configuração do memberlist
+memberlist:
+  node_name: pyroscope
+  bind_port: 7946
+
+# Configuração de limites
+limits:
+  max_query_length: 24h
+
+# Analytics desabilitado
+analytics:
+  reporting_enabled: false
+
+# Self-profiling básico
+self_profiling:
+  disable_push: false

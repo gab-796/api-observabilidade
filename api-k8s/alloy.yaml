@@ -1,0 +1,224 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: api-app-go
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alloy
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - nodes/metrics
+      - services
+      - endpoints
+      - pods
+      - pods/log
+      - ingresses
+      - configmaps
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alloy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alloy
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: api-app-go
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-config
+  namespace: api-app-go
+data:
+  alloy.yaml: |
+    logging {
+      level  = "info"
+      format = "json"
+    }
+
+    // Descoberta de pods Kubernetes para logs
+    discovery.kubernetes "pods" {
+      role = "pod"
+      namespaces {
+        names = ["api-app-go"]
+      }
+    }
+
+    // Adicionar labels dos metadados do Kubernetes
+    discovery.relabel "pods" {
+      targets = discovery.kubernetes.pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "service"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        target_label = "job"
+        replacement = "kubernetes-pods"
+      }
+
+      // Garantir que pods sem label app tenham service baseado no nome do container
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "service"
+        regex = "(.+)"
+        replacement = "${1}"
+      }
+    }
+
+    // Coleta de logs dos pods Kubernetes
+    loki.source.kubernetes "pods" {
+      targets    = discovery.relabel.pods.output
+      forward_to = [loki.process.add_labels.receiver]
+    }
+
+    // Processar logs para preservar JSON original e adicionar apenas labels essenciais
+    loki.process "add_labels" {
+      forward_to = [loki.write.loki.receiver]
+
+      // Extrair level dos logs JSON se disponível
+      stage.json {
+        expressions = {
+          level_value = "level",
+        }
+      }
+
+      // Apenas level como label (baixa cardinalidade)
+      stage.labels {
+        values = {
+          level = "level_value",
+        }
+      }
+
+      // Preservar timestamp original
+      stage.timestamp {
+        source = "time"
+        format = "RFC3339"
+      }
+    }
+
+    // Write para Loki (logs)
+    loki.write "loki" {
+      endpoint {
+        url = "http://loki:3100/loki/api/v1/push"
+      }
+    }
+
+    // Configuração para coletar métricas internas do próprio Alloy
+    prometheus.exporter.self "alloy_metrics" { }
+
+    prometheus.scrape "alloy_self" {
+      targets    = prometheus.exporter.self.alloy_metrics.targets
+      forward_to = [prometheus.remote_write.mimir.receiver]
+      job_name   = "alloy"
+      scrape_interval = "30s"
+    }
+
+    // Write para Mimir (métricas)
+    prometheus.remote_write "mimir" {
+      endpoint {
+        url = "http://mimir.local/api/v1/push"
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+  namespace: api-app-go
+  labels:
+    app: alloy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      serviceAccountName: alloy
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.9.1
+          args:
+            - run
+            - /etc/alloy/alloy.yaml
+            - --storage.path=/var/lib/alloy/data
+          ports:
+            - containerPort: 12345
+              name: http-metrics
+          volumeMounts:
+            - name: alloy-storage
+              mountPath: /var/lib/alloy/data
+            - name: alloy-config
+              mountPath: /etc/alloy
+              readOnly: true
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 473
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: alloy-storage
+          emptyDir: {}
+        - name: alloy-config
+          configMap:
+            name: alloy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+  namespace: api-app-go
+spec:
+  ports:
+    - name: http-metrics
+      protocol: TCP
+      port: 12345
+      targetPort: 12345
+  selector:
+    app: alloy

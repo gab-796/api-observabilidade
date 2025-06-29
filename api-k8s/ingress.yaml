@@ -6,20 +6,21 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: inventory.local
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: inventory-service
-            port:
-              number: 10000
-      - path: /metrics # Path exclusivo pro /metrics ser usado com o ingress
-        pathType: Prefix
-        backend:
-          service:
-            name: inventory-app-metrics-service # Nome do seu Service de métricas
-            port:
-              number: 2113                # Porta do Service de métricas
+    - host: inventory.local
+      http:
+        paths:
+        # Aplicação principal
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: inventory-service
+                port:
+                  number: 10000
+          - path: /metrics # Path exclusivo pro /metrics ser usado com o ingress
+            pathType: Prefix
+            backend:
+              service:
+                name: inventory-app-metrics-service # Nome do seu Service de métricas
+                port:
+                  number: 2113                # Porta do Service de métricas

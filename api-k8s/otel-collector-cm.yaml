@@ -10,19 +10,44 @@ data:
         protocols:
           grpc:
             endpoint: "0.0.0.0:4317"
+      prometheus: # Configuração para coletar métricas da app
+        config:
+          scrape_configs:
+            - job_name: 'inventory-app' # Métricas da app Go
+              static_configs:
+                - targets: ['inventory-app-metrics-service:2113'] # Nome correto do service
+              scrape_interval: 15s
+              metrics_path: /metrics
+            - job_name: 'mimir-metrics'
+              static_configs:
+                - targets: ['mimir:9009'] # Métricas internas do Mimir
+              scrape_interval: 30s
+              metrics_path: /metrics
+
     processors:
       batch:
+
     exporters:
-      datadog:
-        api:
-          key: "${env:DD_API_KEY_GO_LAB}"
-          site: datadoghq.com
+      otlp:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+      prometheusremotewrite: # Exporter para métricas
+        endpoint: "http://mimir:9009/api/v1/push"
+
     extensions:
       health_check: {}
+
     service:
       extensions: [health_check]
+      telemetry:
+        logs:
+          level: "warn"
       pipelines:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [datadog]
+          exporters: [otlp]
+        metrics: # Pipeline de métricas para o Mimir
+          receivers: [prometheus]
+          exporters: [prometheusremotewrite]

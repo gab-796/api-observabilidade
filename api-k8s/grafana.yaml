@@ -17,18 +17,49 @@ spec:
     spec:
       containers:
         - name: grafana
-          image: grafana/grafana:11.5.2
+          image: grafana/grafana:11.6.0
           ports:
             - containerPort: 3000
           env:
-            - name: GF_SECURITY_ADMIN_PASSWORD
-              value: "admin"
+            # Habilitar acesso anônimo - SEM NECESSIDADE DE LOGIN
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Admin"
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: "true"
+            - name: GF_AUTH_DISABLE_SIGNOUT_MENU
+              value: "true"
+            - name: GF_LOG_LEVEL
+              value: "warn"
+            - name: GF_FEATURE_TOGGLES_ENABLE
+              value: "traceqlEditor,metricsSummary"
+            - name: GF_INSTALL_PLUGINS
+              value: "https://storage.googleapis.com/integration-artifacts/grafana-exploretraces-app/grafana-exploretraces-app-latest.zip;grafana-traces-app"
+            # Configurações adicionais para estabilidade
+            - name: GF_SERVER_ROOT_URL
+              value: "http://grafana-web.local"
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
           volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
+            - name: grafana-datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
       volumes:
         - name: grafana-storage
           emptyDir: {}
+        - name: grafana-datasources
+          configMap:
+            name: grafana-datasources
 ---
 apiVersion: v1
 kind: Service
@@ -41,17 +72,3 @@ spec:
       targetPort: 3000
   selector:
     app: grafana
----
-apiVersion: v1
-kind: ConfigMap # Possibilita usar o Grafana sem login
-metadata:
-  name: grafana-config
-  namespace: api-app-go
-data:
-  grafana.ini: |
-    [auth.anonymous]
-    enabled = true
-    org_role = Admin
-
-    [security]
-    disable_login_form = true

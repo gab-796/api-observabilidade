@@ -17,14 +17,17 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.123.0
-          command: ["/otelcol-contrib", "--config=/conf/otel-collector-config.yaml"]
+          image: otel/opentelemetry-collector-contrib:0.123.0-amd64
+          command:
+            ["/otelcol-contrib", "--config=/conf/otel-collector-config.yaml"]
           env:
-            - name: DD_API_KEY_GO_LAB
-              valueFrom:
-                secretKeyRef:
-                  name: datadog-api-key # Nome do Secret k8s
-                  key: DD_API_KEY_GO_LAB # Chave dentro do Secret
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT # Conforme configurado no main.go
+              value: "tempo:4317" # Endereço do Tempo
+            #- name: DD_API_KEY_GO_LAB # Configuração pra envio de trace pro DD
+            #  valueFrom:
+            #    secretKeyRef:
+            #      name: datadog-api-key # Nome do Secret k8s
+            #      key: DD_API_KEY_GO_LAB # Chave dentro do Secret
           ports:
             - containerPort: 4317 # Porta do receptor OTLP gRPC
               name: otlp-grpc

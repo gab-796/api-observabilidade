@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pyroscope-config
+  namespace: api-app-go
+data:
+  config.yaml: |
+    server:
+      http_listen_port: 4040
+      grpc_listen_port: 4041
+      log_level: warn
+
+    memberlist:
+      bind_port: 7946
+      join_members: []
+
+    ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: memberlist
+
+    distributor:
+      ring:
+        kvstore:
+          store: memberlist
+
+    storage:
+      backend: filesystem
+      filesystem:
+        dir: /var/lib/pyroscope
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyroscope
+  namespace: api-app-go
+  labels:
+    app: pyroscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pyroscope
+  template:
+    metadata:
+      labels:
+        app: pyroscope
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: pyroscope
+          image: grafana/pyroscope:1.13.0
+          args:
+            - -config.file=/etc/pyroscope/config.yaml
+          ports:
+            - containerPort: 4040
+              name: http
+            - containerPort: 4041
+              name: grpc
+            - containerPort: 7946
+              name: memberlist
+          volumeMounts:
+            - name: pyroscope-storage
+              mountPath: /var/lib/pyroscope
+            - name: pyroscope-config
+              mountPath: /etc/pyroscope
+              readOnly: true
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 4040
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 4040
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+      volumes:
+        - name: pyroscope-storage
+          emptyDir: {}
+        - name: pyroscope-config
+          configMap:
+            name: pyroscope-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyroscope
+  namespace: api-app-go
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 4040
+      targetPort: 4040
+    - name: grpc
+      protocol: TCP
+      port: 4041
+      targetPort: 4041
+    - name: memberlist
+      protocol: TCP
+      port: 7946
+      targetPort: 7946
+  selector:
+    app: pyroscope

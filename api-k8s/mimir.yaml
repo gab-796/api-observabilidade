@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mimir-config
+  namespace: api-app-go
+data:
+  mimir.yaml: |
+    target: all
+
+    multitenancy_enabled: false
+
+    server:
+      http_listen_port: 9009
+      log_level: warn
+
+    blocks_storage:
+      backend: filesystem
+      filesystem:
+        dir: /data/blocks
+
+    ingester:
+      ring:
+        replication_factor: 1
+        kvstore:
+          store: inmemory
+
+    compactor:
+      data_dir: /data/compactor
+
+    limits:
+      max_label_names_per_series: 30
+      max_label_value_length: 2048
+      ingestion_rate: 1000000
+      ingestion_burst_size: 1000000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mimir
+  namespace: api-app-go
+  labels:
+    app: mimir
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mimir
+  template:
+    metadata:
+      labels:
+        app: mimir
+    spec:
+      hostNetwork: false
+      hostPID: false
+      hostIPC: false
+      containers:
+        - name: mimir
+          image: grafana/mimir:2.13.0
+          args:
+            - -config.file=/etc/mimir/mimir.yaml
+            - -target=all
+          ports:
+            - containerPort: 9009
+              name: http
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: mimir-storage
+              mountPath: /data
+            - name: mimir-config
+              mountPath: /etc/mimir
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9009
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 9009
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: mimir-storage
+          emptyDir: {}
+        - name: mimir-config
+          configMap:
+            name: mimir-config
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mimir
+  namespace: api-app-go
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 9009
+      targetPort: 9009
+  selector:
+    app: mimir

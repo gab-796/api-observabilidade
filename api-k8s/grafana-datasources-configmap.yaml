@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: api-app-go
+data:
+  datasources.yaml: |
+    # Arquivo a ser usado com o Alloy pra coleta de logs e correlação com traces.
+    apiVersion: 1
+
+    datasources:
+      - name: Tempo
+        type: tempo
+        access: proxy
+        orgId: 1
+        url: http://tempo:3200
+        basicAuth: false
+        isDefault: true
+        version: 1
+        editable: true
+        uid: tempo
+        jsonData:
+          httpMethod: GET
+          serviceMap:
+            datasourceUid: mimir
+          tracesToLogs:
+            datasourceUid: 'loki'
+            tags: ['job', 'instance', 'pod', 'namespace', 'app']
+
+      - name: Loki
+        type: loki
+        access: proxy
+        orgId: 1
+        url: http://loki:3100
+        basicAuth: false
+        isDefault: false
+        version: 1
+        editable: true
+        apiVersion: 1
+        uid: loki
+        jsonData:
+          maxLines: 1000
+
+          # Derived fields para correlação com traces - FORMATO SIMPLES QUE FUNCIONA
+          derivedFields:
+            - datasourceUid: tempo
+              matcherRegex: '"trace_id":\s*"([a-f0-9]{32})"'
+              name: TraceID
+              url: "$${__value.raw}"
+              urlDisplayLabel: "View Trace"
+
+            - datasourceUid: tempo
+              matcherRegex: '"span_id":\s*"([a-f0-9]{16})"'
+              name: SpanID
+              url: "$${__value.raw}"
+              urlDisplayLabel: "View Span"
+
+          # Configurações para extração automática de campos JSON
+          search:
+            extractFields: true
+            sortByStats: true
+
+          # Configurações para melhor correlação
+          tracesToLogs:
+            datasourceUid: tempo
+            tags: ['service_name', 'container']
+
+          # Habilitar detecção automática de JSON
+          jsonData:
+            enableLogDetails: true
+            logLevel: "info"
+
+      - name: Pyroscope
+        type: phlare  # Usar 'phlare' para compatibilidade
+        access: proxy
+        orgId: 1
+        url: http://pyroscope:4040
+        basicAuth: false
+        isDefault: false
+        version: 1
+        editable: true
+        uid: pyroscope
+        jsonData:
+          httpMethod: GET
+          # Configuração de correlação com traces
+          tracesToProfiles:
+            datasourceUid: 'tempo'
+            tags: ['service.name', 'service.namespace']
+            profileTypeId: 'cpu'
+            customQuery: true
+            query: 'inventory-app{}'
+          # Configuração de correlação com logs
+          profilesToLogs:
+            datasourceUid: 'loki'
+            tags: ['service']
+
+      - name: Mimir
+        type: prometheus
+        access: proxy
+        orgId: 1
+        url: http://mimir:9009/prometheus
+        basicAuth: false
+        isDefault: false
+        version: 1
+        editable: true
+        uid: mimir
+        jsonData:
+          httpMethod: GET
