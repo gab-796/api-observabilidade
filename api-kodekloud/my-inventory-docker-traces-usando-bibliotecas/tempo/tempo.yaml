@@ -4,8 +4,13 @@ server:
   http_listen_port: 3200 # Porta usada para configurar o DS do Tempo no Grafana. Expoe ela pra fora do container.
   grpc_listen_port: 9095 # Porta onde o servidor do Tempo escuta chamadas administrativas e internas, ou seja, de outros componentes do Tempo.
   log_level: warn
+  grpc_server_max_recv_msg_size: 16777216 #16MB
+  grpc_server_max_send_msg_size: 16777216 # 16MB
 
 distributor:
+  ring:
+    kvstore:
+      store: memberlist # Pode ser memory tb.
   receivers: # Entrada de traces no Tempo. Configurando 0.0.0.0 ele aceita qualquer IP de origem.
     otlp:
       protocols:
@@ -18,11 +23,21 @@ ingester:
   trace_idle_period: 10s
   max_block_bytes: 5242880
   max_block_duration: 5m
+  lifecycler:
+    ring:
+      replication_factor: 1
+      kvstore:
+        store: memberlist # Ou memory
+
+querier:
+  frontend_worker:
+    frontend_address: tempo:9095
 
 storage:
   trace:
     backend: local
     wal:
-      path: /var/tempo/wal
+      path: /var/tempo/wal # Path dentro do container do Tempo
     local:
-      path: /var/tempo
+      #path: /var/tempo
+      path: /var/tempo/data # Caminho dentro do container, que será mapeado para o volume Docker

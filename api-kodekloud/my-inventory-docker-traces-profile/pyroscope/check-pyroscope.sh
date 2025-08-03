@@ -5,7 +5,7 @@ echo "🔍 Monitorando status do Pyroscope..."
 
 while true; do
     response=$(curl -s http://localhost:4040/ready 2>/dev/null)
-    
+
     if [[ $response == "ready" ]]; then
         echo "✅ $(date '+%H:%M:%S') - Pyroscope está PRONTO!"
         break
@@ -16,7 +16,7 @@ while true; do
     else
         echo "⚠️  $(date '+%H:%M:%S') - Status: $response"
     fi
-    
+
     sleep 2
 done
 

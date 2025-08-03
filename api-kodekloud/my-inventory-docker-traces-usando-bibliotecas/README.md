@@ -1,6 +1,6 @@
 # api-observabilidade em Docker
 API de inventário em Go(v1.22) usando o mySQL v8.0 containerizado.
- Use o arquivo da collection Postman para poder fazer as chamadas de API e verificar o funcionamento da aplicação.
+Use o arquivo da collection Postman para poder fazer as chamadas de API e verificar o funcionamento da aplicação.
 
 ## Ideia de uso
 Colocar a aplicação em um container Docker e deixar o container do mysql fora dele.
@@ -80,8 +80,7 @@ Porém o ideal é rodar a imagem segurando o terminal, pois assim teremos os log
 3.  Enviando a imagem para o docker hub
 `docker push gab796/inventory_app:vN.n`
 
-#####################################################################################################
-
+-----------------------------------------------------------------------------------------------------------------------------------
 
 ## Acessando a primeira métrica no /metrics - http_requests_total
 Quando vc subir a aplicação, basta entrar em
@@ -118,11 +117,12 @@ http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.01"} 1
 http_request_duration_seconds_bucket{method="GET",path="/product/5",le="0.025"} 1
 http_request_duration_seconds_bucket{me# HELP go_gc_duration_seconds A summary of the wall-time pause (stop-the-world) duration in garbage collection cycles.
 
----
+----------------------------------------------------------------------------------------------------------------------------------
 
 ## Traces de forma automatizada das requisições HTTP de entrada
 
 1. Começando executando esses comandos:
+```
 go get go.opentelemetry.io/otel
 go get go.opentelemetry.io/otel/trace
 go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
@@ -130,9 +130,10 @@ go get go.opentelemetry.io/otel/sdk
 go get go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
 go get go.opentelemetry.io/otel/propagation
 go get google.golang.org/grpc
-
+```
 2. Use o container do otelcollector - está no docker compose!
 Ele usará o arquivo .env com a chave de API do DD usado no momento.
+
 > Esse arquivo está no .gitignore, portanto não vazará a chave.
 > O arquivo terá essa estrutura DD_API_KEY_GO_LAB=<SUA-API-KEY>
 
@@ -148,24 +149,104 @@ POST 8.86ms
 PUT 3.5ms
 DELETE 7.46ms
 
+---
+
+## Traces com Grafana Tempo
+
+> Disponível na v3.2 da imagem docker!
+
+1. Acesse o Grafana com `localhost:3000` no seu browser. Em caso de k8s, faça `kpf svc/grafana 3000:3000`
+2. O datasource do Grafana Tempo já deve estar configurado, mas caso não esteja, basta adicionar com o endereço: `tempo:3200`
+3. Execute chamadas na API via Postman e veja os traces aparecerem na UI do Grafana em Search, deixando o refresh em 5s, sem executar query alguma.
+
+----------------------------------------------------------------------------------------------------------------------------------
+
 ## Lista de instrumentadores de trace para pacotes usados nessa aplicação
 
 1. instrumenta trace no pacote gorilla mux
-https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux
+`https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux`
 
 2. instrumenta logrus com trace
-https://github.com/uptrace/opentelemetry-go-extra/tree/main/otellogrus
-Vai injetar o trace_id e o span_id nos logs do logrus!
+`https://github.com/uptrace/opentelemetry-go-extra/tree/main/otellogrus`
+
+> Vai injetar o trace_id e o span_id nos logs do logrus!
 
 3. instrumenta no pacote net/http
-https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http#pkg-overview
+`https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http#pkg-overview`
 OU
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 --> Faz parte da instrumentação automatizada, já implementada.
+`go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0` --> Faz parte da instrumentação automatizada, já implementada.
 
 4. instrumenta trace no pacote grpc
-https://github.com/open-telemetry/opentelemetry-go-contrib/tree/main/instrumentation/google.golang.org/grpc/otelgrpc/example
-go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
+`https://github.com/open-telemetry/opentelemetry-go-contrib/tree/main/instrumentation/google.golang.org/grpc/otelgrpc/example`
+`go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc`
 
 5. instrumenta no pacote mysql
-Anterior: go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql
-Atualizado para : go get github.com/XSAM/otelsql
+Anterior:
+`go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql`
+Atualizado para:
+`go get github.com/XSAM/otelsql`
+
+---------------------------------------------------------------------------------------------------------------------------------------
+
+## Configuração do Otel Collector, Grafana e Tempo
+
+Configs retiradas desses exemplos:
+`https://github.com/grafana/tempo/blob/main/example/docker-compose/otel-collector/docker-compose.yaml`
+`https://github.com/grafana/tempo/blob/main/example/docker-compose/local/docker-compose.yaml`
+
+
+----
+
+# Parei aqui
+
+Veja como usar o Air no docker-compose, pra ele fazer a alteração no docker compose up e vc nao precisar ficar buildando toda hora na hora do teste.
+
+Você configura seu docker-compose.yml para mapear seu código Go local para dentro do container usando volumes (ex: .:/app).
+Dentro do seu Dockerfile (ou no command do docker-compose.yml), você instala e executa uma ferramenta como Air.
+Você roda docker compose up uma vez (com --build na primeira vez ou quando mudar dependências/Dockerfile).
+A ferramenta Air (rodando dentro do container) observa as alterações nos seus arquivos .go (que são refletidas instantaneamente no container por causa do volume).
+Quando Air detecta uma mudança, ela automaticamente recompila seu código Go e reinicia sua aplicação Go dentro do container.
+Vantagem Principal: É muito rápido porque apenas o código Go é recompilado dentro do container, sem a necessidade de reconstruir a imagem Docker inteira.
+
+Exemplo (simplificado) com Air no docker-compose.yml:
+
+YAML
+
+services:
+  meu-app-go:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev # Um Dockerfile otimizado para desenvolvimento
+    volumes:
+      - .:/app # Mapeia seu código para /app no container
+    ports:
+      - "8080:8080"
+    # O comando para iniciar o Air (que irá compilar e rodar seu app)
+    # Você precisará instalar o Air no seu Dockerfile.dev
+    command: air -c .air.toml # Ou apenas 'air'
+No seu Dockerfile.dev:
+
+Dockerfile
+
+FROM golang:1.22-alpine # Ou sua versão preferida
+
+WORKDIR /app
+
+# Instalar Air (pode ser feito de forma mais otimizada)
+RUN go install github.com/cosmtrek/air@latest
+
+# Copiar go.mod e go.sum e baixar dependências (para cache)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copiar o resto do código (não é estritamente necessário aqui se o volume faz tudo,
+# mas bom para o build inicial e se o Air precisar do código para o primeiro build)
+COPY . .
+
+# Air vai cuidar da compilação e execução, então o CMD padrão pode ser apenas air.
+# Certifique-se que seu arquivo .air.toml está configurado corretamente.
+# Expor a porta que o Air/sua aplicação vai usar
+EXPOSE 8080
+
+# O 'command' no docker-compose.yml sobrescreverá este CMD se presente
+# CMD ["air"]

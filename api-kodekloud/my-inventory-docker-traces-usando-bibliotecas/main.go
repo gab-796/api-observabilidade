@@ -15,11 +15,14 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+
+	// Importando o pacote de trace
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -81,7 +84,7 @@ func NewResponseWriterWrapper(w http.ResponseWriter) *ResponseWriterWrapper {
 	return &ResponseWriterWrapper{w, http.StatusOK} // Status padrão
 }
 
-// --- Middleware (modificado para incluir o histograma) ---
+// --- Middleware  ---
 func prometheusMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wrappedWriter := NewResponseWriterWrapper(w)
@@ -117,6 +120,7 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// --- init  ---
 func init() {
 	log.SetLevel(logrus.InfoLevel)
 	log.SetFormatter(&logrus.JSONFormatter{})
@@ -133,18 +137,50 @@ func main() {
 			endpoint = "otel-collector:4317" // Usado em ambiente Docker, com o container otel-collector e a porta grpc.
 		}
 	}
-	// Inicialização do OpenTelemetry (apenas para traces)
-	tp, err := tracerProvider(endpoint) // Ao invés de usar hardcoded, usamos a variável de ambiente endpoint.
-	if err != nil {
-		log.WithError(err).Fatal("Erro ao inicializar o OpenTelemetry")
-	}
+	// --- Inicialização do OpenTelemetry ---
 
-	defer func() { // garante que o TracerProvider encerre corretamente e que todos os spans pendentes sejam enviados.
-		_ = tp.Shutdown(context.Background())
+	// 1. Criar o TracerProvider principal (para HTTP e outros)
+	mainServiceName := "inventory-app" // Nome do Service do Tracer automatizado do pacote http.
+	log.Infof("Tentando criar TracerProvider principal para o serviço: %s", mainServiceName)
+	mainTp, err := newTracerProvider(endpoint, mainServiceName) //mainTP --> Main Tracer Provider, ou seja, pro pacote http.
+	if err != nil {
+		// Este Fatalf já existe e é crucial. Se ele ocorrer, os logs abaixo não aparecerão.
+		log.WithError(err).Fatalf("Erro ao inicializar o TracerProvider principal (%s)", mainServiceName)
+	}
+	// Definir como o provider global
+	otel.SetTracerProvider(mainTp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	log.Infof("TracerProvider principal (%s) configurado como global.", mainServiceName)
+
+	// Função de shutdown para o provider principal
+	defer func() {
+		log.Infof("Desligando o TracerProvider principal (%s)...", mainServiceName)
+		if err := mainTp.Shutdown(context.Background()); err != nil {
+			log.WithError(err).Errorf("Erro ao desligar o TracerProvider principal (%s)", mainServiceName)
+		} else {
+			log.Infof("TracerProvider principal (%s) desligado.", mainServiceName)
+		}
 	}()
 
-	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	// 2. Criar o TracerProvider secundário (para SQL)
+	sqlServiceName := "my-inventory-mysql" // Nome do service que vai aparecer no Tempo relacionado ao BD MySQL.
+	log.Infof("Tentando criar TracerProvider para SQL para o serviço: %s", sqlServiceName)
+	sqlTp, err := newTracerProvider(endpoint, sqlServiceName) // sqlTp --> TracerProvider pro SQL.
+	if err != nil {
+		log.WithError(err).Fatalf("Erro ao inicializar o TracerProvider do SQL (%s)", sqlServiceName)
+	}
+	log.Infof("TracerProvider para SQL (%s) criado.", sqlServiceName)
+
+	// Função de shutdown para o provider do SQL
+	defer func() {
+		log.Infof("Desligando o TracerProvider do SQL (%s)...", sqlServiceName)
+		if err := sqlTp.Shutdown(context.Background()); err != nil {
+			log.WithError(err).Errorf("Erro ao desligar o TracerProvider do SQL (%s)", sqlServiceName)
+		} else {
+			log.Infof("TracerProvider do SQL (%s) desligado.", sqlServiceName)
+		}
+	}()
+	// --- Fim da Inicialização do OpenTelemetry ---
 
 	var wg sync.WaitGroup
 	wg.Add(2) // Incrementando para 2 goroutines
@@ -152,55 +188,95 @@ func main() {
 	// Inicia o servidor de métricas
 	go func() {
 		defer wg.Done()
-		log.Info("Serviço de métricas iniciado na porta :2113")
-		http.Handle("/metrics", promhttp.Handler())
-
-		if err := http.ListenAndServe(":2113", nil); err != nil && err != http.ErrServerClosed {
-			log.WithError(err).Fatal("Erro ao iniciar o servidor de métricas")
+		metricsAddr := ":2113"
+		log.Infof("Serviço de métricas iniciado na porta %s", metricsAddr)
+		muxMetrics := http.NewServeMux()
+		muxMetrics.Handle("/metrics", promhttp.Handler()) // Use um mux dedicado para métricas
+		if err := http.ListenAndServe(metricsAddr, muxMetrics); err != nil && err != http.ErrServerClosed {
+			log.WithError(err).Fatalf("Erro ao iniciar o servidor de métricas na porta %s", metricsAddr)
 		}
 	}()
 
+	// Inicializa a aplicação, passando o TracerProvider do SQL
 	app := App{}
-	err = app.Initialise()
+	// Passa o sqlTp para a inicialização da App
+	err = app.Initialise(sqlTp)
 	if err != nil {
-		log.Fatal(err)
+		log.WithError(err).Fatal("Erro fatal ao inicializar a aplicação")
 	}
 
 	// Inicia a aplicação principal
 	go func() {
 		defer wg.Done()
-		log.Info("Aplicação iniciada na porta :10000")
-		if err := http.ListenAndServe(":10000", otelhttp.NewHandler(app.Router, "app")); err != nil && err != http.ErrServerClosed {
-			log.WithError(err).Fatal("Erro ao iniciar o servidor da aplicação")
+		appAddr := ":10000"
+		log.Infof("Aplicação principal iniciando na porta %s", appAddr)
+		// O otelhttp.NewHandler usará o TracerProvider GLOBAL (mainTp)
+		handler := otelhttp.NewHandler(app.Router, mainServiceName) // Usa o nome do serviço principal aqui
+		if err := http.ListenAndServe(appAddr, handler); err != nil && err != http.ErrServerClosed {
+			log.WithError(err).Fatalf("Erro ao iniciar o servidor da aplicação na porta %s", appAddr)
 		}
 	}()
 
+	log.Info("Servidores iniciados. Aguardando...")
 	wg.Wait()
+	log.Info("Todos os servidores foram encerrados.")
 }
 
-// Cria a funcão de tracerProvider: Essa função conecta ao endpoint do OTLP.
-func tracerProvider(endpoint string) (*sdktrace.TracerProvider, error) {
-	ctx := context.Background()
+// newTracerProvider: Função que cria um TracerProvider com um nome de serviço específico.
+func newTracerProvider(endpoint string, serviceName string) (*sdktrace.TracerProvider, error) {
+	ctx := context.Background() // Contexto base para operações que não são a conexão inicial
 
-	conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Usa grpc.NewClient conforme sugerido pela IDE.
+	// A conexão pode ocorrer em background. Erros de conexão podem aparecer
+	// mais tarde, durante a exportação dos spans.
+	conn, err := grpc.NewClient(endpoint,
+		// grpc.WithTransportCredentials() ainda é necessário para configurar TLS ou insecure.
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
 	if err != nil {
-		return nil, err
+		// Erros aqui são geralmente de configuração das opções, não da conexão em si.
+		return nil, fmt.Errorf("falha ao configurar gRPC client para OTLP exporter em %s para o serviço %s: %w", endpoint, serviceName, err)
 	}
+	log.Infof("Conexão gRPC com OTLP exporter (%s) estabelecida para o serviço %s", endpoint, serviceName)
 
+	// Cria o exporter OTLP/gRPC
 	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
 	if err != nil {
-		return nil, err
+		// Tenta fechar a conexão se a criação do exporter falhar
+		if closeErr := conn.Close(); closeErr != nil {
+			log.WithError(closeErr).Warnf("Erro ao fechar conexão gRPC após falha na criação do exporter para %s", serviceName)
+		}
+		return nil, fmt.Errorf("falha ao criar OTLP trace exporter para o serviço %s: %w", serviceName, err)
 	}
+	log.Infof("OTLP trace exporter criado para o serviço %s", serviceName)
 
-	resource := resource.NewWithAttributes(
-		semconv.SchemaURL,
-		semconv.ServiceName("inventory-app"), // Aqui é definido o nome do serviço que vai aparecer na aba de traces do DD.
+	// Define o recurso (Resource) com o nome do serviço e o Schema URL.
+	// Este é o bloco que você indicou, agora corrigido:
+	res, err := resource.New(ctx,
+		resource.WithSchemaURL(semconv.SchemaURL), // <<< CORRIGIDO: Usa WithSchemaURL para definir o schema
+		resource.WithAttributes( // <<< CORRIGIDO: Apenas os atributos KeyValue aqui
+			semconv.ServiceNameKey.String(serviceName), // Define o nome do serviço
+			attribute.String("environment", "local"),   // Mantendo seu atributo de ambiente
+			// semconv.ServiceVersionKey.String("1.0.0"), // Exemplo de outro atributo
+		),
 	)
+	if err != nil {
+		conn.Close() // Fecha a conexão se a criação do recurso falhar.
+		return nil, fmt.Errorf("falha ao criar recurso para o serviço %s: %w", serviceName, err)
+	}
+	log.Infof("Recurso OpenTelemetry criado para o serviço %s", serviceName)
 
+	// Cria o TracerProvider com o BatchSpanProcessor e o Recurso
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(traceExporter),
-		sdktrace.WithResource(resource),
+		sdktrace.WithBatcher(traceExporter), // Envia spans em batches
+		sdktrace.WithResource(res),          // Associa o recurso ao provider
+		// Você pode adicionar outros samplers ou span processors aqui se necessário
+		// sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
+	log.Infof("TracerProvider (%s) criado com sucesso.", serviceName)
+
+	// Nota: A conexão gRPC (conn) não deve ser fechada aqui,
+	// pois o exporter a utiliza. O Shutdown do TracerProvider cuidará disso.
 
 	return tp, nil
 }

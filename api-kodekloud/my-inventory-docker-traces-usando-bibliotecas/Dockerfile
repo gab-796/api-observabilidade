@@ -55,3 +55,7 @@ LABEL changelog="Na v3.0 só funcionava pra Docker, agora vai funcionar pra k8s"
 LABEL version="3.2"
 LABEL description="Versão 3.2 - Substitui o Datadog como recebedor de traces pelo Tempo e adiciona instrumentação a biblioteca MySQL"
 LABEL changelog="Adiciona o container do Grafana Tempo e a instrumentação pra trace de biblioteca do container mySQL"
+
+LABEL version="3.3"
+LABEL description="Versão 3.3 - Diferencia o trace de http e mysql com uso de 2 tracer providers"
+LABEL changelog="Adiciona mais logs e separa os traces de http e mysql com o uso de 2 tracer providers"

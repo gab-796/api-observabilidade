@@ -138,12 +138,13 @@ func (app *App) Initialise(sqlTracerProvider trace.TracerProvider) error {
 
 // --- Método HandleRequests  ---
 func (app *App) HandleRequests() {
-	app.Router.HandleFunc("/products", app.getProducts).Methods("GET")
-	app.Router.HandleFunc("/product/{id:[0-9]+}", app.getProduct).Methods("GET")
-	app.Router.HandleFunc("/product", app.createProduct).Methods("POST")
-	app.Router.HandleFunc("/product/{id:[0-9]+}", app.updateProduct).Methods("PUT")
-	app.Router.HandleFunc("/product/{id:[0-9]+}", app.deleteProduct).Methods("DELETE")
-	app.Router.HandleFunc("/health", app.healthCheck).Methods("GET")
+	// Registrar handlers com profiling contextual
+	app.Router.HandleFunc("/products", ProfiledHTTPHandler("get_products", app.getProducts)).Methods("GET")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", ProfiledHTTPHandler("get_product", app.getProduct)).Methods("GET")
+	app.Router.HandleFunc("/product", ProfiledHTTPHandler("create_product", app.createProduct)).Methods("POST")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", ProfiledHTTPHandler("update_product", app.updateProduct)).Methods("PUT")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", ProfiledHTTPHandler("delete_product", app.deleteProduct)).Methods("DELETE")
+	app.Router.HandleFunc("/health", ProfiledHTTPHandler("health_check", app.healthCheck)).Methods("GET")
 }
 
 // --- Método Run  ---

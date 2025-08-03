@@ -9,29 +9,18 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time" // Importar time para o ticker
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 
-	// --- Adições para OpenTelemetry SQL ---
+	// Import para o trace
 	"github.com/XSAM/otelsql"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0" // Já tenho no main.go
-	// --------------------------------------
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
-// sendError e sendResponse são funções auxiliares projetadas para padronizar a forma como sua aplicação Go envia respostas HTTP, tanto em caso de erro quanto em caso de sucesso.
-
-/*
-w http.ResponseWriter: Este é o objeto padrão do Go para escrever a resposta HTTP que será enviada de volta ao cliente (navegador, API client, etc.).  É através dele que você define o código de status, cabeçalhos e o corpo da resposta.
-status int: Este é o código de status HTTP que você deseja enviar (por exemplo, 400 Bad Request, 500 Internal Server Error, 404 Not Found, etc.).  Esses códigos indicam ao cliente o resultado da requisição.
-err error: Este é o objeto de erro Go que contém informações sobre o erro que ocorreu.
-w.WriteHeader(status): Esta linha define o código de status HTTP da resposta. É crucial definir o código de status antes de escrever qualquer coisa no corpo da resposta.
-
-json.NewEncoder(w): Cria um novo codificador JSON que escreverá diretamente no http.ResponseWriter (w). Isso significa que a saída JSON será enviada como o corpo da resposta HTTP.
-map[string]string{"error": err.Error()}: Cria um mapa (um dicionário em outras linguagens) que tem uma única chave chamada "error". O valor associado a essa chave é a mensagem do erro, obtida através de err.Error(). Isso é importante: você está enviando apenas a mensagem de erro, não o objeto de erro completo (que poderia conter informações sensíveis ou detalhes de implementação).
-.Encode(...): Codifica o mapa como JSON e o escreve no http.ResponseWriter
-*/
-
+// --- Funções sendError e sendResponse  ---
 func sendError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -39,101 +28,120 @@ func sendError(w http.ResponseWriter, status int, err error) {
 }
 
 func sendResponse(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json") // Define o content type
-	w.WriteHeader(status)                              //Seta o status code antes de enviar a resposta
-	if data != nil {                                   // Verifica se existe dados a serem retornados.
-		err := json.NewEncoder(w).Encode(data) // escreve a resposta.
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if data != nil {
+		err := json.NewEncoder(w).Encode(data)
 		if err != nil {
 			log.WithError(err).Error("Erro ao codificar a resposta JSON")
-			// Não chamamos sendError aqui para evitar recursão infinita;
-			// apenas logamos e retornamos, o status code já foi setado.
 		}
 	}
 }
 
+// --- Estrutura App  ---
 type App struct {
 	Router *mux.Router
 	DB     *sql.DB
 }
 
-func (app *App) Initialise() error {
+// --- Método Initialise ---
+func (app *App) Initialise(sqlTracerProvider trace.TracerProvider) error {
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASSWORD")
 	dbName := os.Getenv("DB_NAME")
 	dbHost := os.Getenv("DB_HOST")
 
-	// Nome original do driver MySQL usado
-	originalDriverName := "mysql"
+	if dbUser == "" || dbPassword == "" || dbName == "" || dbHost == "" {
+		return errors.New("variáveis de ambiente do banco de dados (DB_USER, DB_PASSWORD, DB_NAME, DB_HOST) não configuradas")
+	}
 
-	connectionString := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true", dbUser, dbPassword, dbHost, dbName)
 	var err error
+
+	if err != nil {
+		log.Fatalf("Erro ao conectar ao banco de dados: %v", err)
+	}
+	originalDriverName := "mysql"
+	connectionString := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true", dbUser, dbPassword, dbHost, dbName)
+
 	app.DB, err = otelsql.Open(originalDriverName, connectionString,
-		// Define atributos semânticos, como o tipo de banco de dados
-		otelsql.WithAttributes(semconv.DBSystemMySQL),
-
-		// Opção para reportar o texto da query (db.statement) - Equivalente a WithQuery, mas presente no option.go
-		otelsql.WithAttributes(semconv.DBSystemMySQL),
-
-		// Opção para reportar os parâmetros da query - Equivalente a WithQueryParams
-		// CUIDADO: Pode expor dados sensíveis nos traces! Use com cautela.
+		otelsql.WithTracerProvider(sqlTracerProvider),
+		otelsql.WithAttributes(
+			semconv.DBSystemMySQL,
+			semconv.DBNameKey.String(dbName),
+			semconv.NetPeerNameKey.String(dbHost),
+			semconv.NetPeerPortKey.Int(3306),
+		),
 		otelsql.WithSQLCommenter(true),
-
-		// Opcional: Reportar métricas (requer configuração adicional se quiser usar métricas OTEL)
-		// otelsql.ReportAllMetrics(),
-
-		// Opcional: Adicionar SQLCommenter (adiciona comentários nas queries SQL com info de trace)
-		// otelsql.WithSQLCommenter(true),
 	)
 	if err != nil {
-		log.WithError(err).Error("Erro ao conectar com o banco de dados usando otelsql.Open")
+		log.WithError(err).Errorf("Erro ao conectar com o banco de dados (%s) usando otelsql.Open", dbName)
 		return fmt.Errorf("falha ao abrir conexão com o banco de dados instrumentado: %w", err)
 	}
 
-	// O Ping também será instrumentado pelo otelsql.
-	err = app.DB.PingContext(context.Background()) // Use PingContext para passar contexto
-	if err != nil {
-		log.WithError(err).Error("Erro ao fazer ping no banco de dados após conexão otelsql")
-		// Tenta fechar a conexão se o ping falhar
-		if closeErr := app.DB.Close(); closeErr != nil {
-			log.WithError(closeErr).Error("Erro ao fechar a conexão DB após falha no ping")
+	// Teste para subir o MySQL
+	var db *sql.DB
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=true", dbUser, dbPassword, dbHost, dbName) // Definição da variável dsn
+
+	for _ = range make([]struct{}, 10) { // Cria um slice de 10 elementos, não importa o tipo, só para iteração
+		db, err = sql.Open(originalDriverName, dsn)
+		if err == nil {
+			err = db.Ping()
+			if err == nil {
+				break
+			}
 		}
-		return fmt.Errorf("falha ao fazer ping no banco de dados: %w", err)
+		log.Printf("MySQL ainda não disponível (%v). Tentando novamente em 2s...", err)
+		time.Sleep(2 * time.Second)
+	}
+	// Fim do teste
+
+
+	// Define timeout dentro do contexto do span
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// PingContext
+	err = app.DB.PingContext(ctx)
+	if err != nil {
+		log.WithError(err).Errorf("Erro ao fazer ping no banco de dados (%s) após conexão otelsql", dbName)
+		app.DB.Close()
+		return fmt.Errorf("falha ao fazer ping no banco de dados (%s): %w", dbName, err)
 	}
 
-	log.Info("Conexão com o banco de dados (MySQL com OTEL Tracing) estabelecida com sucesso")
+	log.Infof("Conexão com o banco de dados MySQL (%s@%s) instrumentada com OTEL (serviço: my-inventory-mysql) estabelecida com sucesso", dbName, dbHost)
 
 	app.Router = mux.NewRouter().StrictSlash(true)
+	app.Router.Use(prometheusMiddleware)
 	app.HandleRequests()
-	app.Router.Use(prometheusMiddleware) // Aplica o middleware a TODAS as rotas
-
-	// Inicializa a métrica products_in_db (em uma goroutine)
-	go app.updateProductsInDBMetric() //inicia a go routine
+	go app.startBackgroundProductCountUpdate()
 
 	log.Info("Aplicação inicializada com sucesso")
 	return nil
 }
 
+// --- Método HandleRequests  ---
 func (app *App) HandleRequests() {
 	app.Router.HandleFunc("/products", app.getProducts).Methods("GET")
-	app.Router.HandleFunc("/product/{id}", app.getProduct).Methods("GET")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", app.getProduct).Methods("GET")
 	app.Router.HandleFunc("/product", app.createProduct).Methods("POST")
-	app.Router.HandleFunc("/product/{id}", app.updateProduct).Methods("PUT")
-	app.Router.HandleFunc("/product/{id}", app.deleteProduct).Methods("DELETE")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", app.updateProduct).Methods("PUT")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", app.deleteProduct).Methods("DELETE")
+	app.Router.HandleFunc("/health", app.healthCheck).Methods("GET")
 }
 
+// --- Método Run  ---
 func (app *App) Run(addr string) {
-	log.Infof("Servidor iniciando na porta %s", addr)
-	if err := http.ListenAndServe(addr, app.Router); err != nil {
-		log.WithError(err).Fatal("Erro ao iniciar o servidor")
-	}
+	log.Infof("Lógica de execução movida para main.go para integração com otelhttp.")
 }
 
+// --- Handlers da API  ---
 func (app *App) getProducts(w http.ResponseWriter, r *http.Request) {
-	products, err := getProductsFromDB(app.DB)
+	// Passa o contexto da requisição para a função do banco de dados
+	products, err := getProductsFromDB(r.Context(), app.DB) // Passando r.Context()
 	if err != nil {
 		log.WithError(err).Error("Erro ao obter produtos do banco de dados")
-		sqlErrorsTotal.Inc() // Incrementa o contador de erros SQL
-		sendError(w, http.StatusInternalServerError, err)
+		sqlErrorsTotal.Inc()
+		sendError(w, http.StatusInternalServerError, errors.New("failed to retrieve products"))
 		return
 	}
 	log.WithField("num_products", len(products)).Info("Listando produtos")
@@ -142,24 +150,20 @@ func (app *App) getProducts(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) getProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	key, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		log.WithError(err).Warn("ID do produto inválido")
-		sendError(w, http.StatusBadRequest, fmt.Errorf("invalid product ID"))
-		return
-	}
+	key, _ := strconv.Atoi(vars["id"])
 
 	p := product{ID: key}
-	err = p.getProduct(app.DB)
+	// Passa o contexto da requisição para a função do banco de dados
+	err := p.getProduct(r.Context(), app.DB) // Passando r.Context()
 	if err != nil {
+		// Agora podemos confiar mais no erro retornado pela função getProduct
 		if errors.Is(err, sql.ErrNoRows) {
 			log.WithField("product_id", key).Info("Produto não encontrado")
-			sendError(w, http.StatusNotFound, fmt.Errorf("produto não encontrado"))
-
+			sendError(w, http.StatusNotFound, fmt.Errorf("product with ID %d not found", key))
 		} else {
-			log.WithError(err).Error("Erro ao buscar produto no banco de dados")
-			sqlErrorsTotal.Inc() // Incrementa o contador de erros SQL
-			sendError(w, http.StatusInternalServerError, err)
+			log.WithError(err).WithField("product_id", key).Error("Erro ao buscar produto no banco de dados")
+			sqlErrorsTotal.Inc()
+			sendError(w, http.StatusInternalServerError, errors.New("failed to retrieve product"))
 		}
 		return
 	}
@@ -169,89 +173,151 @@ func (app *App) getProduct(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) createProduct(w http.ResponseWriter, r *http.Request) {
 	var p product
+	r.Body = http.MaxBytesReader(w, r.Body, 1_048_576)
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(&p); err != nil {
-		log.WithError(err).Warn("Payload de requisição inválido")
-		sendError(w, http.StatusBadRequest, fmt.Errorf("invalid request payload"))
+		log.WithError(err).Warn("Payload de requisição inválido para criar produto")
+		sendError(w, http.StatusBadRequest, errors.New("invalid request payload"))
 		return
 	}
 	defer r.Body.Close()
 
-	err := p.createProduct(app.DB)
+	if p.Name == "" || p.Price < 0 || p.Quantity < 0 {
+		log.Warn("Tentativa de criar produto com dados inválidos")
+		sendError(w, http.StatusBadRequest, errors.New("invalid product data: name is required, price and quantity cannot be negative"))
+		return
+	}
+
+	// Passa o contexto da requisição para a função do banco de dados
+	err := p.createProduct(r.Context(), app.DB) // <<< MODIFICADO: Passando r.Context()
 	if err != nil {
 		log.WithError(err).Error("Erro ao criar produto no banco de dados")
-		sqlErrorsTotal.Inc() // Incrementa o contador de erros SQL
-		sendError(w, http.StatusInternalServerError, err)
+		sqlErrorsTotal.Inc()
+		sendError(w, http.StatusInternalServerError, errors.New("failed to create product"))
 		return
 	}
 
 	log.WithField("product_id", p.ID).Info("Produto criado")
 	sendResponse(w, http.StatusCreated, p)
-
-	// Atualiza a métrica de produtos no banco de dados
-	app.updateProductsInDBMetric()
 }
+
 func (app *App) updateProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	key, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		log.WithError(err).Warn("ID do produto inválido")
-		sendError(w, http.StatusBadRequest, fmt.Errorf("invalid product ID"))
-		return
-	}
+	key, _ := strconv.Atoi(vars["id"])
 
 	var p product
+	r.Body = http.MaxBytesReader(w, r.Body, 1_048_576)
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(&p); err != nil {
-		log.WithError(err).Warn("Payload de requisição inválido")
-		sendError(w, http.StatusBadRequest, fmt.Errorf("invalid request payload"))
+		log.WithError(err).Warn("Payload de requisição inválido para atualizar produto")
+		sendError(w, http.StatusBadRequest, errors.New("invalid request payload"))
 		return
 	}
 	defer r.Body.Close()
 
-	p.ID = key
-	err = p.updateProduct(app.DB)
-	if err != nil {
-		log.WithError(err).Error("Erro ao atualizar produto")
-		sqlErrorsTotal.Inc() // Incrementa o contador de erros SQL
-		sendError(w, http.StatusInternalServerError, err)
+	if p.Name == "" || p.Price < 0 || p.Quantity < 0 {
+		log.WithField("product_id", key).Warn("Tentativa de atualizar produto com dados inválidos")
+		sendError(w, http.StatusBadRequest, errors.New("invalid product data: name is required, price and quantity cannot be negative"))
 		return
 	}
-	log.WithField("product_id", p.ID).Info("Produto atualizado")
+
+	p.ID = key
+	// Passa o contexto da requisição para a função do banco de dados
+	err := p.updateProduct(r.Context(), app.DB) // Passando r.Context()
+	if err != nil {
+		// Verifica o erro sql.ErrNoRows retornado pela função updateProduct
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WithField("product_id", key).Info("Produto não encontrado para atualização")
+			sendError(w, http.StatusNotFound, fmt.Errorf("product with ID %d not found for update", key))
+		} else {
+			log.WithError(err).WithField("product_id", key).Error("Erro ao atualizar produto")
+			sqlErrorsTotal.Inc()
+			sendError(w, http.StatusInternalServerError, errors.New("failed to update product"))
+		}
+		return
+	}
+	log.WithField("product_id", key).Info("Produto atualizado")
 	sendResponse(w, http.StatusOK, p)
 }
 
 func (app *App) deleteProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	key, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		log.WithError(err).Warn("ID do produto inválido")
-		sendError(w, http.StatusBadRequest, fmt.Errorf("invalid product ID"))
-		return
-	}
+	key, _ := strconv.Atoi(vars["id"])
 
 	p := product{ID: key}
-	err = p.deleteProduct(app.DB)
+	// Passa o contexto da requisição para a função do banco de dados
+	err := p.deleteProduct(r.Context(), app.DB) // Passando r.Context()
 	if err != nil {
-		log.WithError(err).Error("Erro ao deletar produto")
-		sqlErrorsTotal.Inc() // Incrementa o contador de erros SQL
-		sendError(w, http.StatusInternalServerError, err)
+		// Verifica o erro sql.ErrNoRows retornado pela função deleteProduct
+		if errors.Is(err, sql.ErrNoRows) {
+			log.WithField("product_id", key).Info("Produto não encontrado para deleção")
+			sendError(w, http.StatusNotFound, fmt.Errorf("product with ID %d not found for deletion", key))
+		} else {
+			log.WithError(err).WithField("product_id", key).Error("Erro ao deletar produto")
+			sqlErrorsTotal.Inc()
+			sendError(w, http.StatusInternalServerError, errors.New("failed to delete product"))
+		}
 		return
 	}
 	log.WithField("product_id", key).Info("Produto deletado")
-	sendResponse(w, http.StatusOK, map[string]string{"result": "success"})
-
-	// Atualiza a métrica de produtos no banco de dados
-	app.updateProductsInDBMetric()
+	sendResponse(w, http.StatusOK, map[string]string{"result": "success", "message": fmt.Sprintf("Product with ID %d deleted", key)})
 }
 
-// Função para atualizar a métrica de produtos no banco de dados
-func (app *App) updateProductsInDBMetric() {
-	count, err := countProducts(app.DB)
-	if err != nil {
-		log.WithError(err).Error("Erro ao contar produtos no banco de dados")
-		sqlErrorsTotal.Inc() // Incrementa o contador de erros SQL
+// --- Health Check (sem alterações, já usava PingContext) ---
+func (app *App) healthCheck(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := app.DB.PingContext(ctx); err != nil {
+		log.WithError(err).Warn("Health check falhou (DB ping)")
+		sendError(w, http.StatusServiceUnavailable, fmt.Errorf("database connection failed: %v", err))
 		return
 	}
-	productsInDB.Set(float64(count))
+	sendResponse(w, http.StatusOK, map[string]string{"status": "ok", "database": "connected"})
+}
+
+// --- Atualização da Métrica de Contagem de Produtos ---
+
+// Função interna para buscar a contagem atual (agora passa contexto)
+func (app *App) getCurrentProductCount() (int, error) {
+	// Cria um contexto com timeout para esta chamada interna
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	// Passa o contexto criado para a função countProducts
+	count, err := countProducts(ctx, app.DB) // Passando ctx
+	if err != nil {
+		log.WithError(err).Error("Erro ao contar produtos no banco de dados para métrica")
+		sqlErrorsTotal.Inc()
+		return 0, err
+	}
+	return count, nil
+}
+
+// Goroutine para atualizar periodicamente a métrica (sem alterações na lógica do ticker)
+func (app *App) startBackgroundProductCountUpdate() {
+	count, err := app.getCurrentProductCount()
+	if err == nil {
+		productsInDB.Set(float64(count))
+		log.Infof("Métrica inicial 'products_in_db' definida para: %d", count)
+	} else {
+		log.Warn("Não foi possível definir a métrica inicial 'products_in_db'")
+	}
+
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	log.Info("Iniciando atualização periódica da métrica 'products_in_db' a cada 5 minutos")
+
+	for range ticker.C {
+		count, err := app.getCurrentProductCount()
+		if err == nil {
+			productsInDB.Set(float64(count))
+			log.Debugf("Métrica 'products_in_db' atualizada para: %d", count)
+		} else {
+			log.Warn("Falha ao atualizar periodicamente a métrica 'products_in_db'")
+		}
+	}
 }

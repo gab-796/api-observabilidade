@@ -369,3 +369,128 @@ func newTracerProvider(endpoint string, serviceName string) (*sdktrace.TracerPro
 
 	return tp, nil
 }
+
+// --- Funções de Profiling Contextual com Integração OpenTelemetry ---
+
+// ProfiledHTTPHandler wraps HTTP handlers to correlate profiling with trace information
+func ProfiledHTTPHandler(handlerName string, handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		span := trace.SpanFromContext(r.Context())
+		
+		// Criar tags dinâmicas baseadas no contexto do trace
+		tags := map[string]string{
+			"handler":    handlerName,
+			"method":     r.Method,
+			"path":       r.URL.Path,
+			"user_agent": categorizeUserAgent(r.UserAgent()),
+		}
+		
+		// Adicionar trace_id e span_id como tags do profiling se disponíveis
+		if span.SpanContext().IsValid() {
+			tags["trace_id"] = span.SpanContext().TraceID().String()
+			tags["span_id"] = span.SpanContext().SpanID().String()
+		}
+		
+		// Executar handler com profiling contextual
+		pyroscope.TagWrapper(r.Context(), pyroscope.Labels(tags), func(ctx context.Context) {
+			handler(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// ProfiledDatabaseOperation wraps database operations with profiling context
+func ProfiledDatabaseOperation(ctx context.Context, operation string, productID int, fn func(context.Context) error) error {
+	span := trace.SpanFromContext(ctx)
+	
+	// Criar tags específicas para operações de banco
+	tags := map[string]string{
+		"db_operation": operation,
+		"component":    "database",
+	}
+	
+	// Adicionar product_id se disponível
+	if productID > 0 {
+		tags["product_id"] = fmt.Sprintf("%d", productID)
+	}
+	
+	// Adicionar informações de trace se disponíveis
+	if span.SpanContext().IsValid() {
+		tags["trace_id"] = span.SpanContext().TraceID().String()
+		tags["span_id"] = span.SpanContext().SpanID().String()
+	}
+	
+	// Executar operação com profiling contextual
+	var err error
+	pyroscope.TagWrapper(ctx, pyroscope.Labels(tags), func(profileCtx context.Context) {
+		err = fn(profileCtx)
+	})
+	
+	return err
+}
+
+// categorizeUserAgent categoriza user agents para profiling mais eficiente
+func categorizeUserAgent(userAgent string) string {
+	if userAgent == "" {
+		return "unknown"
+	}
+
+	// Categorizar por tipo de cliente
+	switch {
+	case contains(userAgent, "curl"):
+		return "curl"
+	case contains(userAgent, "wget"):
+		return "wget"
+	case contains(userAgent, "Postman"):
+		return "postman"
+	case contains(userAgent, "insomnia"):
+		return "insomnia"
+	case contains(userAgent, "Mozilla"), contains(userAgent, "Chrome"), contains(userAgent, "Safari"):
+		return "browser"
+	case contains(userAgent, "Go-http-client"):
+		return "go-client"
+	case contains(userAgent, "python"):
+		return "python-client"
+	default:
+		return "other"
+	}
+}
+
+// contains verifica se uma string contém uma substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr ||
+			(len(s) > len(substr) &&
+				(s[:len(substr)] == substr ||
+					s[len(s)-len(substr):] == substr ||
+					containsHelper(s, substr))))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// ProfileRuntime monitora métricas de runtime Go e as correlaciona com traces
+func ProfileRuntime(ctx context.Context) {
+	span := trace.SpanFromContext(ctx)
+	
+	tags := map[string]string{
+		"component": "runtime",
+		"service":   "inventory-app",
+	}
+	
+	if span.SpanContext().IsValid() {
+		tags["trace_id"] = span.SpanContext().TraceID().String()
+	}
+	
+	pyroscope.TagWrapper(ctx, pyroscope.Labels(tags), func(profileCtx context.Context) {
+		// Esta função pode ser chamada periodicamente para monitorar runtime
+		// O profiling automático do Pyroscope já captura informações de runtime,
+		// mas podemos adicionar tags específicas para correlação
+		time.Sleep(100 * time.Millisecond) // Simula trabalho de monitoramento
+	})
+}

@@ -118,7 +118,7 @@ http_request_duration_seconds_bucket{me# HELP go_gc_duration_seconds A summary o
 
 ---
 
-## Traces
+## Traces de forma automatizada das requisições HTTP de entrada
 
 1. Começando executando esses comandos:
 go get go.opentelemetry.io/otel
@@ -129,32 +129,15 @@ go get go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
 go get go.opentelemetry.io/otel/propagation
 go get google.golang.org/grpc
 
-2. Instale o otelcollector - está no docker compose!
+2. Use o container do otelcollector - está no docker compose!
 Ele usará o arquivo .env com a chave de API do DD usado no momento.
 > Esse arquivo está no .gitignore, portanto não vazará a chave.
 > O arquivo terá essa estrutura DD_API_KEY_GO_LAB=<SUA-API-KEY>
 
 ### Mas em caso de k8s
-otel operator(requer cert-manager instalado no cluster): https://opentelemetry.io/docs/platforms/kubernetes/operator/
+Leia o Readme.md correspondente.
 
-Via helm chart(requer cert-manager):
-#### cert-manager Helm
-helm repo add jetstack https://charts.jetstack.io --force-update
-helm install \
-  cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --version v1.17.0 \
-  --set crds.enabled=true
-
-#### OtelOperator helm
-$ helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-$ helm repo update
-$ `helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
---namespace opentelemetry-operator-system \
---set "manager.collectorImage.repository=otel/opentelemetry-collector-k8s"
-
-3. Execute qualquer uma das rotas e veja os traces aparecerem na aba de traces do DD correspondente.
+1. Execute qualquer uma das rotas e veja os traces aparecerem na aba de traces do DD correspondente.
 
 Os traces costumam ter os seguintes valores no Docker:
 GET 600micros

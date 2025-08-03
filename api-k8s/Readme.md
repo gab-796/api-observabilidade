@@ -14,7 +14,7 @@ Há um configmap apenas para iniciar junto do pod do mysql onde ele cria o datab
 - A v3.0 conta com trace via OtelCollector enviando pro DD da forma mais simples possível, mas só funciona em Docker
 - v3.1 está com o otelexporter endpoint corrigido na main.go para que funcione tanto no Docker quanto no k8s.
 - v3.2 contém traces para biblioteca MySQL e envio pro Grafana Tempo via OtelCollector. Datadog foi deprecated.
-- v4.0 contém Profiling com Pyroscope e traces correlacionados com Logs. Grafana Alloy coleta os logs e enviando pro Loki e Otel collector coletando as métricas e enviando pro Mimir e traces sendo enviados ao Tempo.
+- v4.0 contém Profiling com Pyroscope e traces correlacionados com Logs. Grafana Alloy coleta os logs e enviando pro Loki e Otel collector coletando as métricas e envia pro Mimir. Traces também são coletados via otelcollector e enviados ao Grafana Tempo. O envio de profiling é feito direto do Pyroscope para o Grafana.
 
 O arquivo a ser configurada a versão é o `api-deployment.yaml`
 

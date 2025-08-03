@@ -184,7 +184,7 @@ func (app *App) getProducts(w http.ResponseWriter, r *http.Request) {
 		sendError(w, r, http.StatusInternalServerError, errors.New("failed to retrieve products"))
 		return
 	}
-	
+
 	successEntry := logrus.WithContext(r.Context()).WithField("num_products", len(products)).WithFields(logrus.Fields{
 		"component": "http_handler",
 		"operation": "get_products",

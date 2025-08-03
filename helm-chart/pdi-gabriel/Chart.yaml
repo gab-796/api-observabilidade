@@ -1,0 +1,47 @@
+apiVersion: v2
+name: api-observabilidade
+description: Complete observability stack for Go API with Grafana, Loki, Tempo, Pyroscope, Alloy, Mimir and OTel Collector
+
+# Application chart for deploying the complete observability stack
+type: application
+
+# Chart version - increment when making changes to the chart
+version: 1.0.0
+
+# Application version - the version of the observability stack being deployed
+appVersion: "v1.0.0"
+
+# Keywords for easier discovery
+keywords:
+  - observability
+  - monitoring
+  - tracing
+  - profiling
+  - metrics
+  - logs
+  - grafana
+  - loki
+  - tempo
+  - pyroscope
+  - alloy
+  - mimir
+  - otel
+  - opentelemetry
+
+# Maintainer information
+maintainers:
+  - name: Gabriel Rocha
+    email: gabriel.rocha@ufrj.br
+
+# Home page and source code URLs
+home: https://github.com/gab-796/api-observabilidade
+sources:
+  - https://github.com/gab-796/api-observabilidade
+
+# Dependencies (if using external charts)
+dependencies: []
+
+# Chart annotations
+annotations:
+  category: Observability
+  licenses: Apache-2.0
