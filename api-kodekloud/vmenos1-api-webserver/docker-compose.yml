@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-learning
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: learning
+      MYSQL_USER: user
+      MYSQL_PASSWORD: pass123
+    ports:
+      - "3307:3306"  # Evita conflito com outro MySQL na 3306
+    volumes:
+      - mysql_data:/var/lib/mysql  # Persistência dos dados
+      - ./init:/docker-entrypoint-initdb.d  # Monta o diretório de scripts SQL
+
+volumes:
+  mysql_data:

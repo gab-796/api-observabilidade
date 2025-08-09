@@ -1,0 +1,37 @@
+server:
+  http_listen_port: 9080 # Porta para o servidor HTTP do Promtail (métricas, etc.)
+  grpc_listen_port: 0    # Desabilita a porta gRPC se não for usada
+
+positions:
+  filename: /tmp/positions.yaml # Arquivo para Promtail salvar a posição de leitura dos logs
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push # URL para onde Promtail envia os logs
+
+scrape_configs:
+  - job_name: app_inventory # Nome do job para os logs da sua aplicação
+    docker_sd_configs: # Configuração para descobrir contêineres Docker
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters: # Filtra quais contêineres devem ser monitorados
+          - name: name # Filtra pelo nome do contêiner
+            values:
+              - "inventory-app-telemetry-container" # << IMPORTANTE: Verifique se este é o nome exato do seu contêiner da aplicação
+              # Adicione outros contêineres se desejar, ex: "mysql-container"
+    relabel_configs: # Adiciona ou modifica labels aos logs antes de enviar ao Loki
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)' # Remove a barra inicial do nome do contêiner
+        target_label: 'container'
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service' # Pega o nome do serviço do docker-compose, se disponível
+      # Seus logs JSON já incluem 'level' e 'msg'.
+      # Se o campo do trace ID for "otel.trace_id", o Grafana pode ser configurado para usá-lo.
+      # Se você quiser extrair o trace_id como um label no Loki (para filtragem direta no Loki),
+      # você pode adicionar um pipeline_stage aqui, mas para começar, deixe o Grafana lidar com isso.
+      # Exemplo de pipeline_stage para extrair trace_id (opcional aqui, Grafana pode fazer):
+      # pipeline_stages:
+      #   - json:
+      #       expressions:
+      #         traceid: "otel.trace_id" # Supondo que o campo é "otel.trace_id" nos seus logs JSON
+      #   - labels:
+      #       traceid: # Transforma o campo extraído 'traceid' em um label do Loki

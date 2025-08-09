@@ -1,0 +1,23 @@
+multitenancy_enabled: false
+
+server:
+  http_listen_port: 9009
+  log_level: warn
+
+blocks_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/blocks
+
+ingester:
+  ring:
+    replication_factor: 1
+
+compactor:
+  data_dir: /data/compactor
+
+limits:
+  max_label_names_per_series: 30
+  max_label_value_length: 2048
+  ingestion_rate: 1000000
+  ingestion_burst_size: 1000000

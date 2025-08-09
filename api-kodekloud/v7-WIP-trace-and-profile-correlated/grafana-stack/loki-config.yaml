@@ -1,0 +1,34 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096 # gRPC port, não usado diretamente por Promtail para push
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki # Diretório base para dados e APIs dentro do contêiner Loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory # Para rodar Loki como um único binário sem dependências externas
+
+schema_config:
+  configs:
+    - from: 2022-01-11 # Use uma data no passado
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v12 # Ou v11, v13 dependendo da versão do Loki
+      index:
+        prefix: index_
+        period: 24h
+
+# Optional: Limits to prevent accidental resource exhaustion in development
+# limits_config:
+#   enforce_metric_name: false
+#   reject_old_samples: true
+#   reject_old_samples_max_age: 168h

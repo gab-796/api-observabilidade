@@ -1,0 +1,38 @@
+# Raiz do projeto que o air vai observar
+root = "."
+# Diretório temporário para os builds do air
+tmp_dir = "tmp" # air criará esta pasta
+
+[build]
+  # Comando para construir sua aplicação.
+  # Seu Dockerfile usa 'go build -o main .', então o binário é 'main' na raiz do WORKDIR.
+  cmd = "go build -o ./tmp/main ."
+  # Binário que o air deve executar após a construção.
+  bin = "./tmp/main"
+
+  # Se precisar passar argumentos ou variáveis de ambiente especificamente para a execução via air:
+  # full_bin = "./tmp/main --algum-argumento"
+  # Ou para setar env vars: full_bin = "MINHA_VAR=dev ./tmp/main"
+
+  # Arquivos e extensões para observar
+  include_ext = ["go", "tpl", "tmpl", "html", "env"]
+  # Diretórios para ignorar
+  exclude_dir = ["assets", "tmp", "vendor", "node_modules", "docker-entrypoint-initdb.d"]
+  # Atraso em milissegundos antes de reconstruir
+  delay = 1000 # ms
+  # Parar a aplicação se o build falhar
+  stop_on_error = true
+  # Log de build do air
+  log = "air_build.log"
+
+[log]
+  # Mostrar timestamp nos logs do air
+  time = true
+
+[misc]
+  # Limpar o diretório tmp na saída
+  clean_on_exit = true
+
+[screen]
+  # Limpar a tela a cada rebuild
+  clear_on_rebuild = true

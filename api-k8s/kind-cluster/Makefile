@@ -79,11 +79,11 @@ install-ingress-nginx:
 	helm upgrade --install -n kube-system ingress-nginx ingress-nginx/ingress-nginx --version 4.10.1
 	kubectl rollout -n kube-system status deployment ingress-nginx-controller
 
-install-opentelemetry-demo:
-	helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-	helm upgrade --install opentelemetry-demo observability-helm-charts/observability-generator-otlp-demo --namespace observability-generator-otlp --create-namespace -f charts/observability-generator-otlp-demo/values-local.yaml
+install-kube-state-metrics:
+	helm upgrade --install ksm oci://ghcr.io/prometheus-community/charts/kube-state-metrics --namespace ksm --version 5.21.0 --create-namespace
+	kubectl rollout status deployment ksm-kube-state-metrics -n ksm
 
-install-dependencies: install-cilium install-metrics-server install-metallb install-ingress-nginx install-opentelemetry-demo install-kube-state-metrics
+install-dependencies: install-cilium install-metrics-server install-metallb install-ingress-nginx install-kube-state-metrics
 
 .create-cluster:
     # Check if the cluster exists

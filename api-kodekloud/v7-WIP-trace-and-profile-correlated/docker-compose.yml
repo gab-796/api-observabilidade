@@ -1,0 +1,308 @@
+services:
+  app:
+    build:
+      context: . # Diretório atual, onde está o Dockerfile.
+      #target: development # Use o Dockerfile no diretório atual para construir a imagem. Usado com o air.
+      target: production # Usado para subir a imagem no dockerhub.
+    image: gab796/inventory_app:v4.0 # Comentado pra poder usar com o air.
+    container_name: inventory-app-telemetry-container
+    volumes:
+      # Monta o diretório atual (host) para /app (container)
+      # Isso permite que 'air' veja as mudanças nos arquivos do host
+      - .:/app
+    working_dir: /app # Garante que o comando 'air' execute no diretório correto
+    # Se o CMD no Dockerfile (["air"]) for suficiente, você não precisa deste 'command'.
+    # Se quiser passar argumentos para o air, como um arquivo de config diferente:
+    # command: ["air", "-c", ".air.another.toml"]
+    ports:
+      - "10000:10000" # Exponendo a porta da aplicação
+      - "2113:2113" # Exponendo a porta de métricas
+      - "6060:6060" # Expondo a porta do pprof para profiling
+    depends_on:
+      mysql:
+        condition: service_healthy # Aguarda o MySQL estar pronto
+      otel-collector: # Adicionando dependencia ao collector
+        condition: service_started
+    environment:
+      DB_USER: root
+      DB_PASSWORD: admin
+      DB_NAME: inventory
+      DB_HOST: mysql
+    networks:
+      - observability-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: inventory
+      MYSQL_LOG_ERROR_VERBOSITY: 2 # nivel INFO de log:3 e warn:2
+      #MYSQL_DEBUG: d:t:o,file:stdout # Ativa o log de depuração
+    ports:
+      - "0:3306" # Deixo para o docker escolher a porta livre.
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - type: bind
+        source: ./docker-entrypoint-initdb.d/setup.sh
+        target: /docker-entrypoint-initdb.d/setup.sh
+        read_only: true
+    healthcheck: # Garante que o MySQL esteja pronto antes do app iniciar
+      test:
+        ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-padmin"]
+      interval: 15s
+      retries: 10
+      timeout: 10s
+      start_period: 45s
+    networks:
+      - observability-network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0-amd64 # otel da comunidade com suporte mais amplo a exporters. Não use o Core!
+    container_name: otel-collector # Nome deve permanecer assim pois está cadastrado no main.go dessa forma.
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    #user: "0:0" Usado apenas para pegar log qd usando otelcollector pra coleta.
+    #environment: # Usado apenas quando envio traces para o DataDog.
+    #  DD_API_KEY_GO_LAB: "${DD_API_KEY_GO_LAB}" # Vai pegar do arquivo .env
+    volumes:
+      - ./otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      # IMPORTANTE: Monta o socket do Docker para que o docker_observer funcione.
+      #- /var/run/docker.sock:/var/run/docker.sock:ro
+      # Monta o diretório de logs do Docker para que o filelog receiver funcione.
+      #- /var/lib/docker/containers:/var/lib/docker/containers:ro
+    #ports:
+    #  - 1888:1888 # pprof extension
+    #  - 8888:8888 # Prometheus metrics exposed by the Collector
+    #  - 13133:13133 # health_check extension
+    #  - 4317:4317 # OTLP gRPC receiver, mas nunca exponha ela e a 4318, pois são usadas internamente apenas.
+    networks:
+      - observability-network
+    depends_on:
+      tempo:
+        condition: service_started
+
+  #init-tempo: # Retirado do exemplo: https://github.com/grafana/tempo/blob/main/example/docker-compose/local/docker-compose.yaml
+  #image: &tempoImage grafana/tempo:2.6.0
+  #container_name: init-container
+  #user: root
+  #entrypoint:
+  #- "chown"
+  #- "10001:10001"
+  #- "/var/tempo"
+  #volumes:
+  #- ./tempo/tempo-data:/var/tempo
+  #networks:
+  #    - observability-network
+
+  init-tempo: # Garante permissões no volume nomeado
+    image: busybox:1.37.0 # Imagem pequena apenas para executar comandos
+    container_name: init-tempo-permissions
+    user: root
+    # entrypoint: ["chown", "-R", "10001:10001", "/var/tempo"] # -R para recursivo, caso subdiretórios existam
+    command: ["sh", "-c", "chown -R 10001:10001 /var/tempo ; ls -ld /var/tempo"] # Adiciona ls para debug
+    volumes:
+      - ./tempo/tempo-data:/var/tempo # <-- Monta o VOLUME NOMEADO para o chown
+    networks:
+      - observability-network
+
+  tempo:
+    image: grafana/tempo:2.6.0 # Versão do Tempo
+    container_name: tempo-container
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo.yaml
+      # - ./tempo/tempo-data:/var/tempo
+      - tempo-data:/var/tempo # Mapeando volume Docker para persistir os dados
+    ports:
+      - "3200:3200" # porta usada fora do container, aberta pra uso no grafana ao configurar o DS do Tempo. Não expor as portas internas 4317 e 4318!
+    networks:
+      - observability-network
+    depends_on:
+      - init-tempo
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: grafana-container
+    volumes:
+      - ./grafana-stack/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      # Adicionar volume para persistir dados do Grafana
+      - grafana_data:/var/lib/grafana
+    environment:
+      # Habilitar acesso anônimo - SEM NECESSIDADE DE LOGIN
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      # Desabilitar login form completamente
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_DISABLE_SIGNOUT_MENU=true
+      # Configurações de log e features
+      - GF_LOG_LEVEL=warn
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor,metricsSummary
+      - GF_INSTALL_PLUGINS=https://storage.googleapis.com/integration-artifacts/grafana-exploretraces-app/grafana-exploretraces-app-latest.zip;grafana-traces-app
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    networks:
+      - observability-network
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.5 #
+    container_name: loki-container
+    ports:
+      - "3100:3100" # Porta HTTP do Loki
+    volumes:
+      - ./grafana-stack/loki-config.yaml:/etc/loki/config.yaml:ro
+      - loki_data:/loki # Volume para persistir os dados do Loki
+    command: -config.file=/etc/loki/config.yaml
+    networks:
+      - observability-network
+    restart: unless-stopped
+
+  # Usando o Otelcollector para coletar logs e enviar ao Loki. Fallback é o Promtail.
+  #promtail:
+  #  image: grafana/promtail:2.9.5 # Ou latest
+  #  container_name: promtail-container
+  #  volumes:
+  #    - ./grafana-stack/promtail-config.yaml:/etc/promtail/config.yaml:ro
+  #    - /var/run/docker.sock:/var/run/docker.sock:ro # Para Promtail descobrir contêineres
+  #    - promtail_positions:/tmp # Volume para persistir as posições de leitura
+  #  command: -config.file=/etc/promtail/config.yaml
+  #  networks:
+  #    - observability-network
+  #  depends_on: # Garante que o Loki esteja pronto antes do Promtail (opcional, mas bom)
+  #    - loki
+  #    # Adicione também sua 'app' aqui se quiser garantir que a app inicie antes do promtail tentar logar
+  #    # - app
+  #  restart: unless-stopped
+
+  # Container para corrigir permissões do Pyroscope
+  init-pyroscope:
+    image: busybox:1.37.0
+    container_name: init-pyroscope-permissions
+    user: root
+    command: ["sh", "-c", "chown -R 10001:10001 /var/lib/pyroscope ; ls -ld /var/lib/pyroscope"]
+    volumes:
+      - pyroscope_data:/var/lib/pyroscope
+    networks:
+      - observability-network
+
+  pyroscope:
+    image: grafana/pyroscope:1.13.0
+    container_name: pyroscope-container
+    user: "10001:10001"  # Usar o mesmo usuário das permissões
+    ports:
+      - "4040:4040" # Porta HTTP do Pyroscope
+      - "4041:4041" # Porta gRPC do Pyroscope
+      - "7946:7946" # Porta Memberlist para descoberta de serviços
+    volumes:
+      - ./grafana-stack/pyroscope.yaml:/etc/pyroscope/config.yaml:ro
+      - pyroscope_data:/var/lib/pyroscope # Volume para persistir os dados do Pyroscope
+    command: -config.file=/etc/pyroscope/config.yaml
+    # Timeout de stop mais baixo para shutdown rápido
+    stop_grace_period: 3s
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4040/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - observability-network
+    depends_on:
+      - init-pyroscope
+    restart: unless-stopped
+
+  # Serviço para monitorar status do Pyroscope
+  pyroscope-monitor:
+    image: curlimages/curl:latest
+    container_name: pyroscope-monitor
+    depends_on:
+      - pyroscope
+    networks:
+      - observability-network
+    volumes:
+      - ./pyroscope/check-pyroscope.sh:/check-pyroscope.sh:ro
+    command: >
+      sh -c "
+        echo '🔍 Aguardando Pyroscope iniciar...'
+        sleep 10
+        ready_count=0
+        while true; do
+          response=$$(curl -s http://pyroscope:4040/ready 2>/dev/null || echo 'no-response')
+          timestamp=$$(date '+%H:%M:%S')
+
+          if [ \"$$response\" = \"ready\" ]; then
+            ready_count=$$((ready_count + 1))
+            echo \"✅ $$timestamp - Pyroscope está PRONTO! (confirmação $$ready_count/3)\"
+
+            # Confirmar 3 vezes antes de parar
+            if [ $$ready_count -ge 3 ]; then
+              echo \"🎯 Acesse: http://localhost:4040 como datasource na UI do Grafana\"
+              echo \"📊 Pyroscope confirmado como estável. Monitor finalizando.\"
+              exit 0
+            fi
+          elif echo \"$$response\" | grep -q 'Ingester not ready'; then
+            echo \"⏳ $$timestamp - Ingester aguardando estabilização (15s)...\"
+            ready_count=0
+          elif [ \"$$response\" = \"no-response\" ]; then
+            echo \"❌ $$timestamp - Pyroscope não está respondendo\"
+            ready_count=0
+          else
+            echo \"⚠️  $$timestamp - Status: $$response\"
+            ready_count=0
+          fi
+
+          sleep 2
+        done
+      "
+    restart: "no"
+
+  # Alloy usado pra pegar logs dos containers. métrica e trace vai pelo otel collector mesmo
+  alloy:
+    image: grafana/alloy:v1.9.1
+    container_name: alloy-container
+    command: ["run", "/etc/alloy/alloy.yaml", "--storage.path", "/var/lib/alloy/data"]
+    volumes:
+      - ./grafana-stack/alloy.yaml:/etc/alloy/alloy.yaml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Acesso ao Docker socket para descobrir containers
+      - alloy_data:/var/lib/alloy/data  # Volume para persistir estado do Alloy
+    networks:
+      - observability-network
+    depends_on:
+      - app
+      - loki
+    restart: unless-stopped
+    stop_grace_period: 3s # Reduz tempo de shutdown de 10s para 3s
+
+  mimir:
+    image: grafana/mimir:2.16.0
+    container_name: mimir-container
+    command: ["-config.file=/etc/mimir.yaml"]
+    volumes:
+      - ./grafana-stack/mimir.yaml:/etc/mimir.yaml:ro
+      - mimir_data:/data
+    ports:
+      - "9009:9009"
+    networks:
+      - observability-network
+
+volumes:
+  tempo-data: # Volume Docker para persistência de dados do Tempo
+    driver: local
+  loki_data:
+  alloy_data:  # Volume para persistir dados do Alloy
+    driver: local
+  #promtail_positions:
+  pyroscope_data: # Volume Docker para persistência dos dados do Pyroscope
+    driver: local
+  mysql_data: # Volume Docker para persistência dos dados do MySQl
+  grafana_data: # Volume Docker para persistência dos dados do Grafana
+    driver: local
+  mimir_data:
+    driver: local
+
+networks:
+  observability-network:
+    driver: bridge

@@ -1,0 +1,21 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317" # Especifica o endereço e porta para o receptor gRPC
+
+processors:
+  batch:
+
+exporters:
+  datadog:
+    api:
+      key: "${env:DD_API_KEY_GO_LAB}"
+      site: datadoghq.com
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [datadog]

@@ -1,0 +1,91 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    access: proxy
+    orgId: 1
+    url: http://tempo:3200
+    basicAuth: false
+    isDefault: true
+    version: 1
+    editable: true
+    uid: tempo
+    jsonData:
+      httpMethod: GET
+      serviceMap:
+        datasourceUid: prometheus
+      tracesToLogs:
+        datasourceUid: 'loki'
+        tags: ['job', 'instance', 'pod', 'namespace', 'app']
+
+  - name: Loki
+    type: loki
+    access: proxy
+    orgId: 1
+    url: http://loki:3100
+    basicAuth: false
+    isDefault: false
+    version: 1
+    editable: true
+    apiVersion: 1
+    uid: loki
+    jsonData:
+      maxLines: 1000
+      # Query padrão para extrair campos JSON automaticamente
+      defaultQuery: '{container="inventory-app-telemetry-container"} | json'
+      # Formato novo do Grafana 12.0 para correlação
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '"trace_id":"([a-f0-9]{16,32})"'
+          name: TraceID
+          # Novo formato simplificado do Grafana 12.0
+          url: '/explore?left=${__url_encode:{"datasource":"tempo","queries":[{"query":"${__value.raw}"}]}}'
+
+        - datasourceUid: tempo
+          matcherRegex: '"span_id":"([a-f0-9]{16})"'
+          name: SpanID
+          # Novo formato simplificado do Grafana 12.0
+          url: '/explore?left=${__url_encode:{"datasource":"tempo","queries":[{"query":"${__value.raw}"}]}}'
+
+        # Adicionar campos importantes como derivedFields
+        - name: StatusCode
+          matcherRegex: '"status_code":(\d+)'
+
+        - name: Method
+          matcherRegex: '"method":"([A-Z]+)"'
+
+        - name: Component
+          matcherRegex: '"component":"([^"]+)"'
+
+        - name: Duration
+          matcherRegex: '"duration_ms":(\d+)'
+      lokiSearch:
+        sortByStats: true
+      search:
+        extractFields: true
+        sortByStats: true
+
+  - name: Pyroscope
+    type: phlare  # Mudança: usar 'phlare' em vez de 'pyroscope'
+    access: proxy
+    orgId: 1
+    url: http://pyroscope:4040
+    basicAuth: false
+    isDefault: false
+    version: 1
+    editable: true
+    uid: pyroscope
+    jsonData:
+      httpMethod: GET
+      # Configuração de correlação com traces
+      tracesToProfiles:
+        datasourceUid: 'tempo'
+        tags: ['service.name', 'service.namespace']
+        profileTypeId: 'cpu'
+        customQuery: true
+        query: 'inventory-app{}'
+      # Configuração de correlação com logs
+      profilesToLogs:
+        datasourceUid: 'loki'
+        tags: ['service']

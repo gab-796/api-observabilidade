@@ -1,0 +1,95 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+// Descoberta de containers Docker para logs
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Adicionar labels dos metadados do Docker
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    target_label  = "container"
+    // Retira a barra inicial do nome do container lá no Grafana UI.
+    regex         = "/(.*)"
+    replacement   = "${1}"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_image"]
+    target_label  = "image"
+  }
+
+  rule {
+    target_label = "job"
+    replacement = "docker-logs"
+  }
+}
+
+// Coleta de logs dos containers Docker
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.containers.output
+  forward_to = [loki.process.add_labels.receiver]
+}
+
+// Processar logs para preservar JSON original e adicionar apenas labels essenciais
+loki.process "add_labels" {
+  forward_to = [loki.write.loki.receiver]
+
+  // NÃO extrair campos como expressions - deixar o JSON original intacto
+  // Apenas adicionar level como label para filtragem
+  stage.json {
+    expressions = {
+      level_value = "level",
+    }
+  }
+
+  // Apenas level como label (baixa cardinalidade)
+  stage.labels {
+    values = {
+      level = "level_value",
+    }
+  }
+
+  // Preservar timestamp original
+  stage.timestamp {
+    source = "time"
+    format = "RFC3339"
+  }
+}
+
+// Write para Loki (logs)
+loki.write "loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// Manter a configuração de métricas existente (comentada para não interferir com otel)
+// server:
+//   log_level: info
+//
+// prometheus:
+//   wal_directory: /tmp/alloy-wal
+//
+//   global:
+//     scrape_interval: 15s
+//
+//   scrape_configs:
+//     - job_name: 'inventory-app'
+//       static_configs:
+//         - targets: ['app:2113']
+//
+//   remote_write:
+//     - url: http://mimir:9009/api/v1/push

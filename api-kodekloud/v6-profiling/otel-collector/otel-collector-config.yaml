@@ -1,0 +1,23 @@
+receivers: # Saída de traces da app em Go --> OpenTelemetry Collector
+  otlp:
+    protocols:
+      grpc:
+        endpoint: otel-collector:4317 # Especifica o endereço e porta para o receptor gRPC da App em Go para enviar traces pro OtelCollector.
+
+exporters: # Configurações de saída de traces (otelCollector --> Tempo)
+  otlp/tempo:
+    endpoint: tempo:4317 # Otelcollector vai pegar os traces e enviar para esse endereço, com o serviço tempo e porta configurada na config do Tempo para receber esses dados. Configurado no main.go
+    #otlphttp/tempo:
+    #  endpoint: http://tempo:4318 # Para usar otelhttp, vc deverá refatorar o código GO para dar suporte a isso.
+    tls:
+      insecure: true # https://github.com/grafana/tempo/blob/main/example/docker-compose/otel-collector/otel-collector.yaml
+
+service:
+  telemetry:
+    logs:
+      level: "warn"
+  pipelines:
+    traces/tempo:
+      receivers: [otlp]
+      exporters: [otlp/tempo]
+      #exporters: [otlphttp/tempo]
