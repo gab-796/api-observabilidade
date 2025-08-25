@@ -216,3 +216,8 @@ Agora só falta colocar o contexto em quase todas as chamadas de log
 
 Adicionei o Loki e o Promtail no docker compose, mas eles ainda não estão chegando com span_id ou trace_id
 O datasource do Loki ainda falta ser configurado, mas o endereço do DS é http://loki:3100
+
+
+## Detalhe sobre a instrumentação de Profile
+Estou usando as 2 bibliotecas http/pprof que não fornece profiling continuo e a do pyroscope-go, que provê.
+A boa seria remover a pprof e deixar apenas do pyroscope.

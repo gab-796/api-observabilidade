@@ -9,7 +9,7 @@ import (
 )
 
 
-// Struct product (sem alterações)
+// Struct product
 type product struct {
 	ID       int     `json:"id"`
 	Name     string  `json:"name"`
@@ -17,7 +17,7 @@ type product struct {
 	Price    float64 `json:"price"`
 }
 
-// getProductsFromDB busca todos os produtos, agora com contexto
+// getProductsFromDB busca todos os produtos
 func getProductsFromDB(ctx context.Context, db *sql.DB) ([]product, error) {
 	logrus.WithContext(ctx).WithFields(logrus.Fields{
 		"component": "database",

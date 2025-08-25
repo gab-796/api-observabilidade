@@ -9,6 +9,7 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/pyroscope-go v1.1.2
+	github.com/grafana/pyroscope-go/godeltaprof v0.1.8
 	github.com/prometheus/client_golang v1.21.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/uptrace/opentelemetry-go-extra/otellogrus v0.3.2
@@ -30,7 +31,6 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/grafana/pyroscope-go/godeltaprof v0.1.8 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect

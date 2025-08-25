@@ -230,10 +230,17 @@ Otelcollector até funciona, porém ele entrega os logs todos quebrados e a sua 
   }
 }
 ```
+
 ## Uso do Pyroscope
-O envio de profile é feito direto da aplicação para o Pyroscope, sem passar pelo Alloy.
+O envio de profile é feito direto da aplicação para o Pyroscope, sem passar pelo Alloy, seguindo um método de push da telemetria.
+
+Foi usada a biblioteca pprof junto da biblioteca pyroscope-go, mas não é necessário ter a pprof pois a do pyroscope faz tudo e de forma continua.
 
 ### Uso de trace-span Profiling
 Aqui fiquei sabendo que há possibilidade em usar trace e span juntos, unindo a correlação entre as 2 telemtrias.
 
 https://github.com/grafana/pyroscope/tree/main/examples/language-sdk-instrumentation/golang-push/migrating-from-standard-pprof#benefits-of-using-pyroscope
+
+
+Considere usar essa biblioteca tb: 
+https://pkg.go.dev/github.com/grafana/pyroscope-go/godeltaprof

@@ -2,9 +2,9 @@ services:
   app:
     build:
       context: . # Diretório atual, onde está o Dockerfile.
-      #target: development # Use o Dockerfile no diretório atual para construir a imagem. Usado com o air.
-      target: production # Usado para subir a imagem no dockerhub.
-    image: gab796/inventory_app:v4.0 # Comentado pra poder usar com o air.
+      target: development # Use o Dockerfile no diretório atual para construir a imagem. Usado com o air.
+      #target: production # Usado para subir a imagem no dockerhub.
+    #image: gab796/inventory_app:v4.0 # Comente para usar build local com air.
     container_name: inventory-app-telemetry-container
     volumes:
       # Monta o diretório atual (host) para /app (container)
@@ -291,7 +291,7 @@ services:
 volumes:
   tempo-data: # Volume Docker para persistência de dados do Tempo
     driver: local
-  loki_data:
+  loki_data: # Persiste também o do Loki, mas não deixa explícito que é o local, que é o default do Docker.
   alloy_data:  # Volume para persistir dados do Alloy
     driver: local
   #promtail_positions:

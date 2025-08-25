@@ -10,6 +10,7 @@ Isso vai criar o arquivo go.mod com esse endereço nele
 2. Já podemos rodar o main.go para ver o início da API respondendo na porta 3000, de acordo com o escolhido no codigo.
 
 Continuando apos escrever a parte do codigo do postres:
+O pgx é um dos melhores drivers de PostgreSQL pra Golang. A v5 foi lançada em
 4. `go get github.com/jackc/pgx/v4`
 
 
@@ -20,3 +21,15 @@ Na época, não consegui fazer dessa forma e tive de apelas pro curso do Kodeklo
 
 ### Detalhes técnicos do Gin
 1. Ele já tem Middleware de Logger e Recovery(para capturar um panic e evitar que o servidor inteiro caia dando erro 500)
+
+
+### Sobre o PGX - driver de POstgresql pra Golang
+https://github.com/jackc/pgx
+
+#### Adaptadores - Bibliotecas que estendem a funcionalidade do driver pgx para integrar ele a outras bibliotecas do Golang
+Adaptadores para Loggers:
+https://github.com/jackc/pgx-zap
+https://github.com/jackc/pgx-zerolog
+
+Adaptadores para traces:
+https://github.com/exaring/otelpgx

@@ -1,11 +1,13 @@
 package main
 
 import (
-	"context" // Importar o pacote context
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	
 	"github.com/sirupsen/logrus"
+	"example.com/my-inventory/observability"
 )
 
 
@@ -18,8 +20,10 @@ type product struct {
 }
 
 // getProductsFromDB busca todos os produtos, agora com contexto e profiling
-func getProductsFromDB(ctx context.Context, db *sql.DB) ([]product, error) {
-	return executeWithProfiling(ctx, "get_products", 0, func(profileCtx context.Context) ([]product, error) {
+func getProductsFromDB(ctx context.Context, db *sql.DB, profiling *observability.ProfilingManager) ([]product, error) {
+	var products []product
+	
+	err := profiling.ProfiledDatabaseOperation(ctx, "get_products", 0, func(profileCtx context.Context) error {
 		logrus.WithContext(profileCtx).WithFields(logrus.Fields{
 			"component": "database",
 			"operation": "get_products",
@@ -33,11 +37,11 @@ func getProductsFromDB(ctx context.Context, db *sql.DB) ([]product, error) {
 				"operation": "get_products",
 				"error":     err.Error(),
 			}).Error("Erro ao executar QueryContext em getProductsFromDB")
-			return nil, fmt.Errorf("erro ao buscar produtos: %w", err)
+			return fmt.Errorf("erro ao buscar produtos: %w", err)
 		}
 		defer rows.Close()
 
-		products := []product{}
+		products = []product{}
 		for rows.Next() {
 			var p product
 			err := rows.Scan(&p.ID, &p.Name, &p.Quantity, &p.Price)
@@ -47,7 +51,7 @@ func getProductsFromDB(ctx context.Context, db *sql.DB) ([]product, error) {
 					"operation": "get_products",
 					"error":     err.Error(),
 				}).Error("Erro ao ler os dados da linha em getProductsFromDB")
-				return nil, fmt.Errorf("erro ao ler dados do produto: %w", err)
+				return fmt.Errorf("erro ao ler dados do produto: %w", err)
 			}
 			products = append(products, p)
 		}
@@ -58,7 +62,7 @@ func getProductsFromDB(ctx context.Context, db *sql.DB) ([]product, error) {
 				"operation": "get_products",
 				"error":     err.Error(),
 			}).Error("Erro durante a iteração das linhas em getProductsFromDB")
-			return nil, fmt.Errorf("erro ao iterar sobre produtos: %w", err)
+			return fmt.Errorf("erro ao iterar sobre produtos: %w", err)
 		}
 
 		logrus.WithContext(profileCtx).WithFields(logrus.Fields{
@@ -66,13 +70,15 @@ func getProductsFromDB(ctx context.Context, db *sql.DB) ([]product, error) {
 			"operation":    "get_products",
 			"num_products": len(products),
 		}).Debug("Produtos encontrados em getProductsFromDB")
-		return products, nil
+		return nil
 	})
+	
+	return products, err
 }
 
 // getProduct busca um produto pelo ID, agora com contexto e profiling
-func (p *product) getProduct(ctx context.Context, db *sql.DB) error {
-	return ProfiledDatabaseOperation(ctx, "get_product", p.ID, func(profileCtx context.Context) error {
+func (p *product) getProduct(ctx context.Context, db *sql.DB, profiling *observability.ProfilingManager) error {
+	return profiling.ProfiledDatabaseOperation(ctx, "get_product", p.ID, func(profileCtx context.Context) error {
 		logrus.WithContext(profileCtx).WithFields(logrus.Fields{
 			"component":  "database",
 			"operation": "get_product",
@@ -110,8 +116,8 @@ func (p *product) getProduct(ctx context.Context, db *sql.DB) error {
 }
 
 // createProduct cria um novo produto, agora com contexto e profiling
-func (p *product) createProduct(ctx context.Context, db *sql.DB) error {
-	return ProfiledDatabaseOperation(ctx, "create_product", 0, func(profileCtx context.Context) error {
+func (p *product) createProduct(ctx context.Context, db *sql.DB, profiling *observability.ProfilingManager) error {
+	return profiling.ProfiledDatabaseOperation(ctx, "create_product", 0, func(profileCtx context.Context) error {
 		logrus.WithContext(profileCtx).WithFields(logrus.Fields{
 			"component":  "database",
 			"operation": "create_product",
@@ -147,8 +153,8 @@ func (p *product) createProduct(ctx context.Context, db *sql.DB) error {
 }
 
 // updateProduct atualiza um produto, agora com contexto e profiling
-func (p *product) updateProduct(ctx context.Context, db *sql.DB) error {
-	return ProfiledDatabaseOperation(ctx, "update_product", p.ID, func(profileCtx context.Context) error {
+func (p *product) updateProduct(ctx context.Context, db *sql.DB, profiling *observability.ProfilingManager) error {
+	return profiling.ProfiledDatabaseOperation(ctx, "update_product", p.ID, func(profileCtx context.Context) error {
 		logrus.WithContext(profileCtx).WithFields(logrus.Fields{
 			"component":  "database",
 			"operation": "update_product",
@@ -198,8 +204,8 @@ func (p *product) updateProduct(ctx context.Context, db *sql.DB) error {
 }
 
 // deleteProduct deleta um produto, agora com contexto e profiling
-func (p *product) deleteProduct(ctx context.Context, db *sql.DB) error {
-	return ProfiledDatabaseOperation(ctx, "delete_product", p.ID, func(profileCtx context.Context) error {
+func (p *product) deleteProduct(ctx context.Context, db *sql.DB, profiling *observability.ProfilingManager) error {
+	return profiling.ProfiledDatabaseOperation(ctx, "delete_product", p.ID, func(profileCtx context.Context) error {
 		logrus.WithContext(profileCtx).WithFields(logrus.Fields{
 			"component":  "database",
 			"operation": "delete_product",
@@ -248,52 +254,21 @@ func (p *product) deleteProduct(ctx context.Context, db *sql.DB) error {
 }
 
 // countProducts conta os produtos, agora com contexto e profiling
-func countProducts(ctx context.Context, db *sql.DB) (int, error) {
-	return executeCountWithProfiling(ctx, "count_products", func(profileCtx context.Context) (int, error) {
-		var count int
+func countProducts(ctx context.Context, db *sql.DB, profiling *observability.ProfilingManager) (int, error) {
+	var count int
+	
+	err := profiling.ProfiledDatabaseOperation(ctx, "count_products", 0, func(profileCtx context.Context) error {
 		query := "SELECT COUNT(*) FROM products"
 		// Usa QueryRowContext para passar o contexto
 		err := db.QueryRowContext(profileCtx, query).Scan(&count)
 		if err != nil {
 			logrus.WithContext(profileCtx).WithError(err).Error("Erro ao executar QueryRowContext ou Scan em countProducts")
-			return 0, fmt.Errorf("erro ao contar produtos: %w", err)
+			return fmt.Errorf("erro ao contar produtos: %w", err)
 		}
-		return count, nil
-	})
-}
-
-// --- Funções auxiliares para profiling ---
-
-// executeWithProfiling executa uma função que retorna []product com profiling contextual
-func executeWithProfiling(ctx context.Context, operation string, productID int, fn func(context.Context) ([]product, error)) ([]product, error) {
-	var result []product
-	var err error
-	
-	profileErr := ProfiledDatabaseOperation(ctx, operation, productID, func(profileCtx context.Context) error {
-		result, err = fn(profileCtx)
-		return err
+		return nil
 	})
 	
-	if profileErr != nil {
-		return nil, profileErr
-	}
-	
-	return result, err
+	return count, err
 }
 
-// executeCountWithProfiling executa uma função que retorna int com profiling contextual
-func executeCountWithProfiling(ctx context.Context, operation string, fn func(context.Context) (int, error)) (int, error) {
-	var result int
-	var err error
-	
-	profileErr := ProfiledDatabaseOperation(ctx, operation, 0, func(profileCtx context.Context) error {
-		result, err = fn(profileCtx)
-		return err
-	})
-	
-	if profileErr != nil {
-		return 0, profileErr
-	}
-	
-	return result, err
-}
+

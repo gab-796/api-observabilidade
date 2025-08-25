@@ -17,7 +17,7 @@ services:
     ports:
       - "10000:10000" # Exponendo a porta da aplicação
       - "2113:2113" # Exponendo a porta de métricas
-      - "6060:6060" # Expondo a porta do pprof para profiling
+      - "6060:6060" # Expondo a porta do pprof para profiling nativo do Go.
     depends_on:
       mysql:
         condition: service_healthy # Aguarda o MySQL estar pronto

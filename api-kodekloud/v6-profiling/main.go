@@ -60,7 +60,7 @@ var (
 		prometheus.HistogramOpts{
 			Name:    "http_request_duration_seconds",
 			Help:    "Duração das requisições HTTP em segundos",
-			Buckets: prometheus.DefBuckets, // Use os buckets padrão do Prometheus (boa opção inicial)
+			Buckets: prometheus.DefBuckets, // Use os buckets padrão do Prometheus
 			// Ou defina seus próprios buckets:
 			// Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 		},

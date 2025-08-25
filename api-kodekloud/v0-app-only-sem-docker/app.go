@@ -17,35 +17,51 @@ type App struct {
 	DB     *sql.DB
 }
 
-func (app *App) Initialise() error { // Método que inicializa
-	connectionString := fmt.Sprintf("%s:%s@tcp(localhost:3306)/%s", DBUser, DBPassword, DBName)
+// Define o método Initialise que tem como receiver (app *App), com app sendo o nome do receiver e *App é o ponteiro pro tipo do receiver.
+func (app *App) Initialise() error {
+	connectionString := fmt.Sprintf("%s:%s@tcp(localhost:3306)/%s", DBUser, DBPassword, DBName) // String de conexão com o banco de dados
 	var err error
-	app.DB, err = sql.Open("mysql", connectionString) // Inicializa a conexão com o driver MySQL.
-	if err != nil { // Verifica se houve erro na conexão.
+	app.DB, err = sql.Open("mysql", connectionString) // Inicializa a conexão com o driver MySQL, armazenando no campo DB da struct app.
+	if err != nil { // Verifica se houve erro no preparo da conexão. Lembrando que a função Open não abre efetivamente a conexao,
 		return err
 	}
-
-	app.Router = mux.NewRouter().StrictSlash(true) // Inicializa o roteador. `go doc github.com/gorilla/mux.Router`
-	return nil
+    // StrictSlash redireciona de path/ para path
+	app.Router = mux.NewRouter().StrictSlash(true) // Inicializa o roteador e armazena no campo Router da struct app.
+	return nil // Para saber mais: `go doc github.com/gorilla/mux.Router`
 }
 
-func (app *App) Run(addr string) {
-	log.Fatal(http.ListenAndServe(addr, app.Router)) //	Inicia o servidor na porta 10000,e por padrão do Go em localhost.
+// Método Run - Usado para iniciar o servidor HTTP e manter ele rodando(Listen and Serve)
+func (app *App) Run(addr string) { // Parâmetro adicional, que seria o :10000, como uma string, já que ela não está no Struct app.
+	log.Fatal(http.ListenAndServe(addr, app.Router)) //	Inicia o servidor,e por padrão do Go, em 0.0.0.0
 }
 
+// Como todo Handler precisará de uma resposta, é melhor criar um genérico e reutilizável por todos os Handlers.
 func sendResponse(w http.ResponseWriter, statusCode int, payload interface{}) { // Função que envia a resposta.
-	response, _ := json.Marshal(payload)               //	Converte o payload para JSON.
+	response, _ := json.Marshal(payload)               //	Converte o payload para JSON, seja lá qual tipo de dado payload tenha.
 	w.Header().Set("Content-Type", "application/json") // Define o cabeçalho da resposta.
 	w.WriteHeader(statusCode)                          // Define o status code da resposta.
 	w.Write(response)                                  // Escreve a resposta.
 }
+/*
+Parâmetros de entrada da função acima:
+- w http.ResponseWriter: o writer da resposta HTTP, que é do tipo interface do pacote http: http.ResponseWriter
+	- Para saber mais: `go doc http.ResponseWriter`
+- statusCode int: o código de status HTTP a ser retornado, que é do tipo inteiro
+- payload interface{}: o payload a ser enviado na resposta, que é do tipo interface vazia,
+que no Go significa que pode ser qualquer tipo de dado
 
+response, _ --> Ignora qualquer erro que json.Marshal possa retornar.
+
+*/
+
+// Função de Escrita de erro, reutilizável da mesma forma que a função acima.
 func sendError(w http.ResponseWriter, statusCode int, err error) { // Função que envia um erro.
 	error_message := map[string]string{"error": err.Error()} // Converte o erro para string.
 	sendResponse(w, statusCode, error_message)               // Envia a resposta com o erro.
 }
 
-func (app *App) getProducts(w http.ResponseWriter, r *http.Request) {
+// Método getProducts com entrada de writer(w) e request(r). Executa a função getProductsFromDB!
+func (app *App) getProducts(w http.ResponseWriter, r *http.Request) { // Seguindo o jargão de Go: w pra writer e r pra request
 	products, err := getProductsFromDB(app.DB)
 	if err != nil {
 		sendError(w, http.StatusInternalServerError, err)
@@ -53,7 +69,9 @@ func (app *App) getProducts(w http.ResponseWriter, r *http.Request) {
 	}
 	sendResponse(w, http.StatusOK, products)
 }
+// r foi declarado mas não foi usado, então o ideal seria omitir ele usando o underline.
 
+// Método getProduct
 func (app *App) getProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	key, err := strconv.Atoi(vars["id"])

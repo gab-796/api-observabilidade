@@ -10,17 +10,19 @@ import (
 	"os"
 	"strconv"
 	"time"
+	
 	"github.com/sirupsen/logrus"
-
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
-
+	
 	// Import para o trace
 	"github.com/XSAM/otelsql"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
 	// Trace para o mux
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
+	
+	"example.com/my-inventory/observability"
 )
 
 // --- Funções sendError e sendResponse  ---
@@ -56,12 +58,16 @@ func sendResponse(ctx context.Context, w http.ResponseWriter, status int, data i
 
 // --- Estrutura App  ---
 type App struct {
-	Router *mux.Router
-	DB     *sql.DB
+	Router    *mux.Router
+	DB        *sql.DB
+	Profiling *observability.ProfilingManager
+	Metrics   *observability.MetricsManager
 }
 
 // --- Método Initialise ---
-func (app *App) Initialise(sqlTracerProvider trace.TracerProvider) error {
+func (app *App) Initialise(sqlTracerProvider trace.TracerProvider, profiling *observability.ProfilingManager, metrics *observability.MetricsManager) error {
+	app.Profiling = profiling
+	app.Metrics = metrics
 	dbUser := os.Getenv("DB_USER")
 	dbPassword := os.Getenv("DB_PASSWORD")
 	dbName := os.Getenv("DB_NAME")
@@ -128,7 +134,7 @@ func (app *App) Initialise(sqlTracerProvider trace.TracerProvider) error {
 	app.Router = mux.NewRouter().StrictSlash(true)
 	// ORDEM CORRETA DOS MIDDLEWARES: Tracing PRIMEIRO, depois Prometheus
 	app.Router.Use(otelmux.Middleware("inventory-app")) // Tracing primeiro!
-	app.Router.Use(prometheusMiddleware)                // Métricas depois
+	// Nota: O middleware de métricas será configurado no main.go
 	app.HandleRequests()
 	go app.startBackgroundProductCountUpdate()
 
@@ -139,12 +145,12 @@ func (app *App) Initialise(sqlTracerProvider trace.TracerProvider) error {
 // --- Método HandleRequests  ---
 func (app *App) HandleRequests() {
 	// Registrar handlers com profiling contextual
-	app.Router.HandleFunc("/products", ProfiledHTTPHandler("get_products", app.getProducts)).Methods("GET")
-	app.Router.HandleFunc("/product/{id:[0-9]+}", ProfiledHTTPHandler("get_product", app.getProduct)).Methods("GET")
-	app.Router.HandleFunc("/product", ProfiledHTTPHandler("create_product", app.createProduct)).Methods("POST")
-	app.Router.HandleFunc("/product/{id:[0-9]+}", ProfiledHTTPHandler("update_product", app.updateProduct)).Methods("PUT")
-	app.Router.HandleFunc("/product/{id:[0-9]+}", ProfiledHTTPHandler("delete_product", app.deleteProduct)).Methods("DELETE")
-	app.Router.HandleFunc("/health", ProfiledHTTPHandler("health_check", app.healthCheck)).Methods("GET")
+	app.Router.HandleFunc("/products", app.Profiling.ProfiledHTTPHandler("get_products", app.getProducts)).Methods("GET")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", app.Profiling.ProfiledHTTPHandler("get_product", app.getProduct)).Methods("GET")
+	app.Router.HandleFunc("/product", app.Profiling.ProfiledHTTPHandler("create_product", app.createProduct)).Methods("POST")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", app.Profiling.ProfiledHTTPHandler("update_product", app.updateProduct)).Methods("PUT")
+	app.Router.HandleFunc("/product/{id:[0-9]+}", app.Profiling.ProfiledHTTPHandler("delete_product", app.deleteProduct)).Methods("DELETE")
+	app.Router.HandleFunc("/health", app.Profiling.ProfiledHTTPHandler("health_check", app.healthCheck)).Methods("GET")
 }
 
 // --- Método Run  ---
@@ -168,7 +174,7 @@ func (app *App) getProducts(w http.ResponseWriter, r *http.Request) {
 	}
 	entry.Info("Iniciando busca de produtos")
 
-	products, err := getProductsFromDB(r.Context(), app.DB)
+	products, err := getProductsFromDB(r.Context(), app.DB, app.Profiling)
 	if err != nil {
 		logEntry := logrus.WithContext(r.Context()).WithError(err).WithFields(logrus.Fields{
 			"component": "http_handler",
@@ -181,7 +187,7 @@ func (app *App) getProducts(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		logEntry.Error("Erro ao obter produtos do banco de dados")
-		sqlErrorsTotal.Inc()
+		app.Metrics.SQLErrorsTotal.Inc()
 		sendError(w, r, http.StatusInternalServerError, errors.New("failed to retrieve products"))
 		return
 	}
@@ -206,7 +212,7 @@ func (app *App) getProduct(w http.ResponseWriter, r *http.Request) {
 
 	p := product{ID: key}
 	// Passa o contexto da requisição para a função do banco de dados
-	err := p.getProduct(r.Context(), app.DB) // Passando r.Context()
+	err := p.getProduct(r.Context(), app.DB, app.Profiling) // Passando r.Context() e Profiling
 	if err != nil {
 		// Agora podemos confiar mais no erro retornado pela função getProduct
 		if errors.Is(err, sql.ErrNoRows) {
@@ -214,7 +220,7 @@ func (app *App) getProduct(w http.ResponseWriter, r *http.Request) {
 			sendError(w, r, http.StatusNotFound, fmt.Errorf("product with ID %d not found", key))
 		} else {
 			logrus.WithContext(r.Context()).WithError(err).WithField("product_id", key).Error("Erro ao buscar produto no banco de dados")
-			sqlErrorsTotal.Inc()
+			app.Metrics.SQLErrorsTotal.Inc()
 			sendError(w, r, http.StatusInternalServerError, errors.New("failed to retrieve product"))
 		}
 		return
@@ -243,10 +249,10 @@ func (app *App) createProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Passa o contexto da requisição para a função do banco de dados
-	err := p.createProduct(r.Context(), app.DB) // <<< MODIFICADO: Passando r.Context()
+	err := p.createProduct(r.Context(), app.DB, app.Profiling) // <<< MODIFICADO: Passando r.Context() e Profiling
 	if err != nil {
 		logrus.WithContext(r.Context()).WithError(err).Error("Erro ao criar produto no banco de dados")
-		sqlErrorsTotal.Inc()
+		app.Metrics.SQLErrorsTotal.Inc()
 		sendError(w, r, http.StatusInternalServerError, errors.New("failed to create product"))
 		return
 	}
@@ -279,7 +285,7 @@ func (app *App) updateProduct(w http.ResponseWriter, r *http.Request) {
 
 	p.ID = key
 	// Passa o contexto da requisição para a função do banco de dados
-	err := p.updateProduct(r.Context(), app.DB) // Passando r.Context()
+	err := p.updateProduct(r.Context(), app.DB, app.Profiling) // Passando r.Context() e Profiling
 	if err != nil {
 		// Verifica o erro sql.ErrNoRows retornado pela função updateProduct
 		if errors.Is(err, sql.ErrNoRows) {
@@ -287,7 +293,7 @@ func (app *App) updateProduct(w http.ResponseWriter, r *http.Request) {
 			sendError(w, r, http.StatusNotFound, fmt.Errorf("product with ID %d not found for update", key))
 		} else {
 			logrus.WithContext(r.Context()).WithError(err).WithField("product_id", key).Error("Erro ao atualizar produto")
-			sqlErrorsTotal.Inc()
+			app.Metrics.SQLErrorsTotal.Inc()
 			sendError(w, r, http.StatusInternalServerError, errors.New("failed to update product"))
 		}
 		return
@@ -302,7 +308,7 @@ func (app *App) deleteProduct(w http.ResponseWriter, r *http.Request) {
 
 	p := product{ID: key}
 	// Passa o contexto da requisição para a função do banco de dados
-	err := p.deleteProduct(r.Context(), app.DB) // Passando r.Context()
+	err := p.deleteProduct(r.Context(), app.DB, app.Profiling) // Passando r.Context() e Profiling
 	if err != nil {
 		// Verifica o erro sql.ErrNoRows retornado pela função deleteProduct
 		if errors.Is(err, sql.ErrNoRows) {
@@ -310,7 +316,7 @@ func (app *App) deleteProduct(w http.ResponseWriter, r *http.Request) {
 			sendError(w, r, http.StatusNotFound, fmt.Errorf("product with ID %d not found for deletion", key))
 		} else {
 			logrus.WithContext(r.Context()).WithError(err).WithField("product_id", key).Error("Erro ao deletar produto")
-			sqlErrorsTotal.Inc()
+			app.Metrics.SQLErrorsTotal.Inc()
 			sendError(w, r, http.StatusInternalServerError, errors.New("failed to delete product"))
 		}
 		return
@@ -339,10 +345,10 @@ func (app *App) getCurrentProductCount() (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	// Passa o contexto criado para a função countProducts
-	count, err := countProducts(ctx, app.DB) // Passando ctx
+	count, err := countProducts(ctx, app.DB, app.Profiling) // Passando ctx e Profiling
 	if err != nil {
 		logrus.WithError(err).Error("Erro ao contar produtos no banco de dados para métrica")
-		sqlErrorsTotal.Inc()
+		app.Metrics.SQLErrorsTotal.Inc()
 		return 0, err
 	}
 	return count, nil
@@ -352,7 +358,7 @@ func (app *App) getCurrentProductCount() (int, error) {
 func (app *App) startBackgroundProductCountUpdate() {
 	count, err := app.getCurrentProductCount()
 	if err == nil {
-		productsInDB.Set(float64(count))
+		app.Metrics.ProductsInDB.Set(float64(count))
 		logrus.Infof("Métrica inicial 'products_in_db' definida para: %d", count)
 	} else {
 		logrus.Warn("Não foi possível definir a métrica inicial 'products_in_db'")
@@ -366,7 +372,7 @@ func (app *App) startBackgroundProductCountUpdate() {
 	for range ticker.C {
 		count, err := app.getCurrentProductCount()
 		if err == nil {
-			productsInDB.Set(float64(count))
+			app.Metrics.ProductsInDB.Set(float64(count))
 			logrus.Debugf("Métrica 'products_in_db' atualizada para: %d", count)
 		} else {
 			logrus.Warn("Falha ao atualizar periodicamente a métrica 'products_in_db'")
