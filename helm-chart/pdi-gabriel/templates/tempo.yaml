@@ -1,83 +1,24 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tempo
-  namespace: api-app-go
-  labels:
-    app: tempo
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: tempo
-  template:
-    metadata:
-      labels:
-        app: tempo
-    spec:
-      containers:
-        - name: tempo
-          image: grafana/tempo:2.6.0
-          args:
-            - -config.file=/etc/tempo/tempo.yaml
-          ports:
-            - containerPort: 4317 # Porta para OTLP gRPC
-            - containerPort: 4318 # Porta para OTLP HTTP
-          env:
-            - name: TEMPO_GRPC_LISTEN_PORT
-              value: "9095" # Porta usada para os componentes do Tempo se conversarem.
-          volumeMounts:
-            - name: tempo-storage
-              mountPath: /var/tempo
-            - name: tempo-config
-              mountPath: /etc/tempo
-              readOnly: true
-      volumes:
-        - name: tempo-storage
-          emptyDir: {}
-        - name: tempo-config
-          configMap:
-            name: tempo-config
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tempo
-  namespace: api-app-go
-spec:
-  ports:
-    - name: http # Nome obrigatório
-      protocol: TCP
-      port: 3200
-      targetPort: 3200
-    - name: grpc # Nome obrigatório
-      protocol: TCP
-      port: 4317
-      targetPort: 4317
-  selector:
-    app: tempo
----
+{{- if .Values.tempo.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: tempo-config
-  namespace: api-app-go
+  name: {{ .Values.tempo.name }}-config
+  namespace: {{ .Values.global.namespace }}
 data:
   tempo.yaml: |
     auth_enabled: false
     server:
-      http_listen_port: 3200
-      grpc_listen_port: 9095
-      log_level: warn
+      http_listen_port: {{ .Values.tempo.ports.http }}
+      log_level: {{ .Values.tempo.config.server.logLevel }}
 
     distributor:
       receivers:
         otlp:
           protocols:
             grpc:
-              endpoint: 0.0.0.0:4317
+              endpoint: 0.0.0.0:{{ .Values.tempo.ports.otlpGrpc }}
             http:
-              endpoint: 0.0.0.0:4318
+              endpoint: 0.0.0.0:{{ .Values.tempo.ports.otlpHttp }}
 
     ingester:
       trace_idle_period: 10s
@@ -86,8 +27,117 @@ data:
 
     storage:
       trace:
-        backend: local
+        backend: {{ .Values.tempo.config.storage.trace.backend }}
         local:
-          path: /var/tempo
+          path: {{ .Values.tempo.config.storage.trace.local.path }}
         wal:
-          path: /var/tempo/wal
+          path: {{ .Values.tempo.config.storage.trace.local.path }}/wal
+
+    query_frontend:
+      search:
+        duration_slo: 5s
+        throughput_bytes_slo: 1.073741824e+09
+      trace_by_id:
+        duration_slo: 5s
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.tempo.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.tempo.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.tempo.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.tempo.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.tempo.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: {{ .Values.tempo.name }}
+          image: {{ .Values.tempo.image.repository }}:{{ .Values.tempo.image.tag }}
+          imagePullPolicy: {{ .Values.tempo.image.pullPolicy }}
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+          ports:
+            - containerPort: {{ .Values.tempo.ports.http }}
+              name: http
+            - containerPort: {{ .Values.tempo.ports.otlpGrpc }}
+              name: otlp-grpc
+            - containerPort: {{ .Values.tempo.ports.otlpHttp }}
+              name: otlp-http
+            - containerPort: 9095
+              name: grpc
+          volumeMounts:
+            - name: tempo-storage
+              mountPath: /var/tempo
+            - name: tempo-config
+              mountPath: /etc/tempo
+              readOnly: true
+          resources:
+            {{- toYaml .Values.tempo.resources | nindent 12 }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.tempo.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.tempo.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: tempo-storage
+          emptyDir: {}
+        - name: tempo-config
+          configMap:
+            name: {{ .Values.tempo.name }}-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.tempo.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.tempo.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: {{ .Values.tempo.ports.http }}
+      targetPort: {{ .Values.tempo.ports.http }}
+    - name: otlp-grpc
+      protocol: TCP
+      port: {{ .Values.tempo.ports.otlpGrpc }}
+      targetPort: {{ .Values.tempo.ports.otlpGrpc }}
+    - name: otlp-http
+      protocol: TCP
+      port: {{ .Values.tempo.ports.otlpHttp }}
+      targetPort: {{ .Values.tempo.ports.otlpHttp }}
+    - name: grpc
+      protocol: TCP
+      port: 9095
+      targetPort: 9095
+  selector:
+    app: {{ .Values.tempo.name }}
+  type: {{ .Values.services.type }}
+{{- end }}

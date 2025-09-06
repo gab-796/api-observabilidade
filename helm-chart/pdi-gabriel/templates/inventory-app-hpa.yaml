@@ -1,0 +1,49 @@
+{{- /* HPA para inventory-app com fallback no bloco global se bloco específico não definido */}}
+{{- $appAuto := .Values.inventoryApp.autoscaling }}
+{{- $globalAuto := .Values.autoscaling }}
+{{- $cfg := (or $appAuto $globalAuto) }}
+{{- if and .Values.inventoryApp.enabled ($cfg.enabled | default false) }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Values.inventoryApp.name }}-hpa
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.inventoryApp.name }}
+    component: autoscaling
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Values.inventoryApp.name }}
+  minReplicas: {{ $cfg.minReplicas | default 1 }}
+  maxReplicas: {{ $cfg.maxReplicas | default 3 }}
+  metrics:
+    {{- if $cfg.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $cfg.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  {{- if $cfg.behavior }}
+  behavior:
+    {{- toYaml $cfg.behavior | nindent 4 }}
+  {{- end }}
+{{- end }}

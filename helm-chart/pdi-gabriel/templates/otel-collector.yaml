@@ -1,0 +1,172 @@
+{{- if .Values.otelCollector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otelCollector.name }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.otelCollector.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:{{ .Values.otelCollector.ports.otlpGrpc }}"
+
+      # Configuração para coletar métricas da app (baseado no seu ConfigMap)
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: '{{ .Values.inventoryApp.name }}'
+              static_configs:
+                - targets: ['{{ .Values.inventoryApp.name }}-metrics-service:{{ .Values.inventoryApp.ports.metrics }}']
+              scrape_interval: {{ .Values.otelCollector.config.prometheus.scrapeInterval | default "15s" }}
+              metrics_path: {{ .Values.inventoryApp.observability.prometheus.metricsPath }}
+
+            {{- if .Values.otelCollector.config.prometheus.scrapeMimir }}
+            - job_name: 'mimir-metrics'
+              static_configs:
+                - targets: ['{{ .Values.mimir.name }}:{{ .Values.mimir.config.internalMetricsPort | default 9009 }}']
+              scrape_interval: {{ .Values.otelCollector.config.prometheus.mimirScrapeInterval | default "30s" }}
+              metrics_path: /metrics
+            {{- end }}
+
+    processors:
+      batch: {}
+
+    exporters:
+      # Exporter para traces (Tempo)
+      otlp:
+        endpoint: {{ .Values.tempo.name }}:{{ .Values.tempo.ports.otlpGrpc }}
+        tls:
+          insecure: true
+
+      # Exporter para métricas (Mimir) - usando a porta correta do seu manifesto
+      prometheusremotewrite:
+        endpoint: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort | default 9009 }}/api/v1/push
+
+    extensions:
+      health_check: {}
+
+    service:
+      extensions: [health_check]
+      telemetry:
+        logs:
+          level: {{ .Values.otelCollector.config.logging.level | quote }}
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp]
+        metrics:
+          receivers: [prometheus]
+          exporters: [prometheusremotewrite]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otelCollector.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.otelCollector.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.otelCollector.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.otelCollector.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.otelCollector.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+        - name: {{ .Values.otelCollector.name }}
+          image: {{ .Values.otelCollector.image.repository }}:{{ .Values.otelCollector.image.tag }}
+          # Comando igual ao seu manifesto original
+          command:
+            - "/otelcol-contrib"
+            - "--config=/conf/otel-collector-config.yaml"
+          env:
+            # Env var igual ao seu manifesto original
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.tempo.name }}:{{ .Values.tempo.ports.otlpGrpc | quote }}
+            {{- if .Values.otelCollector.config.datadog.enabled }}
+            # Configuração comentada do Datadog (mantendo do seu manifesto)
+            # - name: DD_API_KEY_GO_LAB
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: datadog-api-key
+            #       key: DD_API_KEY_GO_LAB
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.otelCollector.ports.otlpGrpc }}
+              name: otlp-grpc
+            - containerPort: {{ .Values.otelCollector.ports.otlpHttp }}
+              name: otlp-http
+            - containerPort: {{ .Values.otelCollector.ports.healthCheck }}
+              name: health
+          volumeMounts:
+            # Mount path igual ao seu manifesto original
+            - name: config-vol
+              mountPath: /conf
+          resources:
+            {{- toYaml .Values.otelCollector.resources | nindent 12 }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
+          # Health checks comentados conforme seu manifesto original
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: {{ .Values.otelCollector.ports.healthCheck }}
+          #   initialDelaySeconds: 75
+          #   periodSeconds: 20
+          #   failureThreshold: 5
+          #   timeoutSeconds: 5
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: {{ .Values.otelCollector.ports.healthCheck }}
+          #   initialDelaySeconds: 50
+          #   periodSeconds: 10
+          #   failureThreshold: 5
+          #   timeoutSeconds: 5
+          {{- end }}
+      volumes:
+        # Nome do volume igual ao seu manifesto original
+        - name: config-vol
+          configMap:
+            name: {{ .Values.otelCollector.name }}-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.otelCollector.name }}-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.otelCollector.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    app: {{ .Values.otelCollector.name }}
+  ports:
+    - name: otlp-grpc
+      port: {{ .Values.otelCollector.ports.otlpGrpc }}
+      targetPort: {{ .Values.otelCollector.ports.otlpGrpc }}
+      protocol: TCP
+    - name: health
+      port: {{ .Values.otelCollector.ports.healthCheck }}
+      targetPort: {{ .Values.otelCollector.ports.healthCheck }}
+      protocol: TCP
+  type: {{ .Values.services.type }}
+{{- end }}

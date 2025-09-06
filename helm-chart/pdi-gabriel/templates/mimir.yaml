@@ -1,123 +1,160 @@
----
+{{- if .Values.mimir.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: mimir-config
-  namespace: api-app-go
+  name: {{ .Values.mimir.name }}-config
+  namespace: {{ .Values.global.namespace }}
 data:
   mimir.yaml: |
-    target: all
-
-    multitenancy_enabled: false
+    multitenancy_enabled: {{ .Values.mimir.config.multitenancyEnabled }}
 
     server:
-      http_listen_port: 9009
-      log_level: warn
+      http_listen_port: {{ .Values.mimir.config.remoteWritePort }}
+      grpc_listen_port: {{ .Values.mimir.ports.grpc }}
+      log_level: {{ .Values.mimir.config.server.logLevel }}
 
-    blocks_storage:
-      backend: filesystem
-      filesystem:
-        dir: /data/blocks
+    distributor:
+      ring:
+        kvstore:
+          store: memberlist
 
     ingester:
       ring:
-        replication_factor: 1
         kvstore:
-          store: inmemory
+          store: memberlist
+        replication_factor: {{ .Values.mimir.config.ingester.replicationFactor }}
+
+    store_gateway:
+      sharding_ring:
+        kvstore:
+          store: memberlist
+
+    blocks_storage:
+      backend: {{ .Values.mimir.config.storage.backend }}
+      filesystem:
+        dir: {{ .Values.mimir.config.storage.filesystem.dir }}
 
     compactor:
       data_dir: /data/compactor
+      sharding_ring:
+        kvstore:
+          store: memberlist
+
+    ruler_storage:
+      backend: {{ .Values.mimir.config.storage.backend }}
+      filesystem:
+        dir: {{ .Values.mimir.config.storage.filesystem.rulerDir }}
 
     limits:
-      max_label_names_per_series: 30
-      max_label_value_length: 2048
-      ingestion_rate: 1000000
-      ingestion_burst_size: 1000000
+      max_global_series_per_user: {{ .Values.mimir.config.limits.maxGlobalSeriesPerUser }}
+      ingestion_rate: {{ .Values.mimir.config.limits.ingestionRate }}
+      out_of_order_time_window: {{ .Values.mimir.config.limits.outOfOrderTimeWindow | default "10m" }}
+
+    usage_stats:
+      enabled: false
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mimir
-  namespace: api-app-go
+  name: {{ .Values.mimir.name }}
+  namespace: {{ .Values.global.namespace }}
   labels:
-    app: mimir
+    app: {{ .Values.mimir.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.mimir.replicaCount }}
   selector:
     matchLabels:
-      app: mimir
+      app: {{ .Values.mimir.name }}
   template:
     metadata:
       labels:
-        app: mimir
+        app: {{ .Values.mimir.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
-      hostNetwork: false
-      hostPID: false
-      hostIPC: false
       containers:
-        - name: mimir
-          image: grafana/mimir:2.13.0
+        - name: {{ .Values.mimir.name }}
+          image: {{ .Values.mimir.image.repository }}:{{ .Values.mimir.image.tag }}
+          imagePullPolicy: {{ .Values.mimir.image.pullPolicy }}
           args:
             - -config.file=/etc/mimir/mimir.yaml
-            - -target=all
+            - -log.level={{ .Values.mimir.config.server.logLevel }}
           ports:
-            - containerPort: 9009
+            - containerPort: {{ .Values.mimir.config.remoteWritePort }}
               name: http
-          env:
-            - name: HOSTNAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
+            - containerPort: {{ .Values.mimir.ports.grpc }}
+              name: grpc
+            - containerPort: 7946
+              name: memberlist
           volumeMounts:
             - name: mimir-storage
-              mountPath: /data
+              mountPath: {{ .Values.mimir.config.storage.filesystem.dir }}
+            - name: mimir-ruler-storage
+              mountPath: {{ .Values.mimir.config.storage.filesystem.rulerDir }}
+            - name: compactor-storage
+              mountPath: /data/compactor
             - name: mimir-config
               mountPath: /etc/mimir
               readOnly: true
-            - name: tmp
-              mountPath: /tmp
           resources:
-            limits:
-              memory: "1Gi"
-              cpu: "500m"
-            requests:
-              memory: "512Mi"
-              cpu: "250m"
+            {{- toYaml .Values.mimir.resources | nindent 12 }}
+          env:
+            - name: JAEGER_AGENT_HOST
+              value: {{ .Values.tempo.name | quote }}
+            - name: JAEGER_AGENT_PORT
+              value: {{ .Values.tempo.ports.otlpGrpc | quote }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: 9009
-            initialDelaySeconds: 45
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 5
+              port: {{ .Values.mimir.config.remoteWritePort }}
+            {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /ready
-              port: 9009
-            initialDelaySeconds: 90
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
+              port: {{ .Values.mimir.config.remoteWritePort }}
+            {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
+          {{- end }}
       volumes:
         - name: mimir-storage
           emptyDir: {}
+        - name: mimir-ruler-storage
+          emptyDir: {}
+        - name: compactor-storage
+          emptyDir: {}
         - name: mimir-config
           configMap:
-            name: mimir-config
-        - name: tmp
-          emptyDir: {}
+            name: {{ .Values.mimir.name }}-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: mimir
-  namespace: api-app-go
+  name: {{ .Values.mimir.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.mimir.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   ports:
     - name: http
       protocol: TCP
-      port: 9009
-      targetPort: 9009
+      port: {{ .Values.mimir.config.remoteWritePort }}
+      targetPort: {{ .Values.mimir.config.remoteWritePort }}
+    - name: grpc
+      protocol: TCP
+      port: {{ .Values.mimir.ports.grpc }}
+      targetPort: {{ .Values.mimir.ports.grpc }}
+    - name: memberlist
+      protocol: TCP
+      port: 7946
+      targetPort: 7946
   selector:
-    app: mimir
+    app: {{ .Values.mimir.name }}
+  type: {{ .Values.services.type }}
+{{- end }}

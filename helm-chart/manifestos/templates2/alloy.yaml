@@ -1,18 +1,13 @@
-{{- if .Values.alloy.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ .Values.alloy.name }}
-  namespace: {{ .Values.global.namespace }}
-  {{- with .Values.serviceAccount.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+  name: alloy
+  namespace: api-app-go
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Values.alloy.name }}
+  name: alloy
 rules:
   - apiGroups: [""]
     resources:
@@ -36,33 +31,33 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Values.alloy.name }}
+  name: alloy
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Values.alloy.name }}
+  name: alloy
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.alloy.name }}
-    namespace: {{ .Values.global.namespace }}
+    name: alloy
+    namespace: api-app-go
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ .Values.alloy.name }}-config
-  namespace: {{ .Values.global.namespace }}
+  name: alloy-config
+  namespace: api-app-go
 data:
   alloy.yaml: |
     logging {
-      level  = "{{ .Values.alloy.config.logging.level }}"
-      format = "{{ .Values.alloy.config.logging.format }}"
+      level  = "info"
+      format = "json"
     }
 
     // Descoberta de pods Kubernetes para logs
     discovery.kubernetes "pods" {
       role = "pod"
       namespaces {
-        names = ["{{ .Values.global.namespace }}"]
+        names = ["api-app-go"]
       }
     }
 
@@ -138,66 +133,55 @@ data:
     // Write para Loki (logs)
     loki.write "loki" {
       endpoint {
-        url = "http://{{ .Values.loki.name }}:{{ .Values.loki.ports.http }}/loki/api/v1/push"
+        url = "http://loki:3100/loki/api/v1/push"
       }
     }
 
-    // Receiver para profiling via push
-    pyroscope.receive_http "default" {
-      http {
-        listen_address = "0.0.0.0"
-        listen_port    = {{ .Values.alloy.ports.profiling | default 4040 }}
-      }
-      forward_to = [pyroscope.write.pyroscope.receiver]
+    // Configuração para coletar métricas internas do próprio Alloy
+    prometheus.exporter.self "alloy_metrics" { }
+
+    prometheus.scrape "alloy_self" {
+      targets    = prometheus.exporter.self.alloy_metrics.targets
+      forward_to = [prometheus.remote_write.mimir.receiver]
+      job_name   = "alloy"
+      scrape_interval = "30s"
     }
 
-    // Write para Pyroscope (profiling)
-    pyroscope.write "pyroscope" {
+    // Write para Mimir (métricas)
+    prometheus.remote_write "mimir" {
       endpoint {
-        url = "http://{{ .Values.pyroscope.name }}:{{ .Values.pyroscope.ports.http }}"
+        url = "http://mimir.local/api/v1/push"
       }
     }
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.alloy.name }}
-  namespace: {{ .Values.global.namespace }}
+  name: alloy
+  namespace: api-app-go
   labels:
-    app: {{ .Values.alloy.name }}
-    {{- with .Values.commonLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    app: alloy
 spec:
-  replicas: {{ .Values.alloy.replicaCount }}
+  replicas: 1
   selector:
     matchLabels:
-      app: {{ .Values.alloy.name }}
+      app: alloy
   template:
     metadata:
       labels:
-        app: {{ .Values.alloy.name }}
-        {{- with .Values.commonLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
+        app: alloy
     spec:
-      serviceAccountName: {{ .Values.alloy.name }}
+      serviceAccountName: alloy
       containers:
-        - name: {{ .Values.alloy.name }}
-          image: {{ .Values.alloy.image.repository }}:{{ .Values.alloy.image.tag }}
-          imagePullPolicy: {{ .Values.alloy.image.pullPolicy }}
+        - name: alloy
+          image: grafana/alloy:v1.9.1
           args:
             - run
             - /etc/alloy/alloy.yaml
             - --storage.path=/var/lib/alloy/data
-            {{- if .Values.alloy.stabilityLevel }}
-            - --stability.level={{ .Values.alloy.stabilityLevel }}
-            {{- end }}
           ports:
-            - containerPort: {{ .Values.alloy.ports.http }}
+            - containerPort: 12345
               name: http-metrics
-            - containerPort: {{ .Values.alloy.ports.profiling | default 4040 }}
-              name: profiling
           volumeMounts:
             - name: alloy-storage
               mountPath: /var/lib/alloy/data
@@ -205,41 +189,36 @@ spec:
               mountPath: /etc/alloy
               readOnly: true
           resources:
-            {{- toYaml .Values.alloy.resources | nindent 12 }}
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
           securityContext:
-            runAsNonRoot: {{ .Values.alloy.securityContext.runAsNonRoot }}
-            runAsUser: {{ .Values.alloy.securityContext.runAsUser }}
-            allowPrivilegeEscalation: {{ .Values.alloy.securityContext.allowPrivilegeEscalation }}
+            runAsNonRoot: true
+            runAsUser: 473
+            allowPrivilegeEscalation: false
             capabilities:
               drop:
-                {{- toYaml .Values.alloy.securityContext.capabilities.drop | nindent 16 }}
+                - ALL
       volumes:
         - name: alloy-storage
           emptyDir: {}
         - name: alloy-config
           configMap:
-            name: {{ .Values.alloy.name }}-config
+            name: alloy-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Values.alloy.name }}
-  namespace: {{ .Values.global.namespace }}
-  labels:
-    app: {{ .Values.alloy.name }}
-    {{- with .Values.commonLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+  name: alloy
+  namespace: api-app-go
 spec:
   ports:
     - name: http-metrics
       protocol: TCP
-      port: {{ .Values.alloy.ports.http }}
-      targetPort: {{ .Values.alloy.ports.http }}
-    - name: profiling
-      protocol: TCP
-      port: {{ .Values.alloy.ports.profiling | default 4040 }}
-      targetPort: {{ .Values.alloy.ports.profiling | default 4040 }}
+      port: 12345
+      targetPort: 12345
   selector:
-    app: {{ .Values.alloy.name }}
-{{- end }}
+    app: alloy
