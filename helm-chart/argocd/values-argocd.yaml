@@ -40,29 +40,35 @@ inventoryApp:
 # ========================================
 grafana:
   enabled: true
+  # NOVO: garante criação do Service
+  service:
+    enabled: true          # Se o subchart verificar esta flag
+    type: ClusterIP
+    port: 80               # Porta exposta no Service (Ingress aponta aqui)
+    targetPort: 3000       # Porta interna do container Grafana
+    portName: http-web     # Ajuste se o chart exigir outro nome (opcional)
+    annotations: {}
+    labels: {}
 
   # Persistência habilitada para ArgoCD (dados não devem ser perdidos)
   persistence:
-    enabled: true
+    enabled: false
     size: 10Gi
     storageClass: ""  # Use storageClass do cluster
     accessModes:
       - ReadWriteOnce
 
-  # Modo efêmero DESABILITADO em produção
   ephemeral:
-    enabled: false
+    enabled: true
     resetDb: false
 
   config:
-    # Usar admin/password em produção com secrets externos
     adminUser: admin
     adminPassword: "{{ .Values.grafana.adminPasswordSecret }}"  # Será sobrescrito por secret
-    
-    # Desabilitar anonymous em produção
+
     auth:
       anonymous:
-        enabled: false
+        enabled: true
         orgRole: "Viewer"
         disableLoginForm: false
         disableSignoutMenu: false
@@ -73,20 +79,13 @@ grafana:
       cookieSecure: true
       allowEmbedding: false
 
-  # Ingress com TLS para produção
   ingress:
     enabled: true
     ingressClassName: nginx
     hosts:
-      grafana: grafana.yourdomain.com  # Substitua pelo seu domínio
-    tls:
-      - secretName: grafana-tls
-        hosts:
-          - grafana.yourdomain.com
+      grafana: grafana-web.local
     annotations:
-      cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Se usar cert-manager
-      nginx.ingress.kubernetes.io/ssl-redirect: "true"
-      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
 # ========================================
 # OBSERVABILITY STACK - PRODUCTION SIZING
@@ -104,7 +103,7 @@ loki:
       memory: "2Gi"
       cpu: "1000m"
     requests:
-      memory: "1Gi"
+      memory: "500Mi"
       cpu: "500m"
 
 # Mimir com persistência
@@ -112,10 +111,10 @@ mimir:
   enabled: true
   resources:
     limits:
-      memory: "4Gi"    # Maior para produção
+      memory: "4Gi"
       cpu: "2000m"
     requests:
-      memory: "2Gi"
+      memory: "500Mi"
       cpu: "1000m"
 
 # Tempo com persistência
@@ -126,7 +125,7 @@ tempo:
       memory: "2Gi"
       cpu: "1000m"
     requests:
-      memory: "1Gi"
+      memory: "500Mi"
       cpu: "500m"
 
 # Pyroscope com persistência
@@ -137,7 +136,7 @@ pyroscope:
       memory: "2Gi"
       cpu: "1000m"
     requests:
-      memory: "1Gi"
+      memory: "500Mi"
       cpu: "500m"
 
 # MySQL com persistência
@@ -148,7 +147,7 @@ mysql:
       memory: "2Gi"
       cpu: "1000m"
     requests:
-      memory: "1Gi"
+      memory: "500Mi"
       cpu: "500m"
 
 # ========================================
@@ -212,5 +211,5 @@ externalSecrets:
   #     key: grafana/admin-password
   # mysql:
   #   rootPassword:
-  #     secretStore: vault-backend  
+  #     secretStore: vault-backend
   #     key: mysql/root-password
