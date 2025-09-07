@@ -1,0 +1,216 @@
+# ========================================
+# VALUES PARA ARGOCD ENVIRONMENT
+# ========================================
+# Este arquivo sobrescreve values.yaml para deployments via ArgoCD
+
+# ========================================
+# GLOBAL CONFIGURATION
+# ========================================
+global:
+  namespace: api-app-go
+  environment: development
+
+# ========================================
+# INVENTORY APPLICATION CONFIGURATION
+# ========================================
+inventoryApp:
+  enabled: true
+  image:
+    tag: v4.0  # Use image tag específica, não "latest"
+    pullPolicy: IfNotPresent  # Mais eficiente no ArgoCD
+
+  # HPA específico para produção
+  autoscaling:
+    enabled: true
+    minReplicas: 2  # Maior resiliência
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70  # Mais conservador
+    targetMemoryUtilizationPercentage: 80
+
+  resources:
+    limits:
+      memory: "1Gi"    # Aumentar para produção
+      cpu: "500m"
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+
+# ========================================
+# GRAFANA CONFIGURATION PARA ARGOCD
+# ========================================
+grafana:
+  enabled: true
+
+  # Persistência habilitada para ArgoCD (dados não devem ser perdidos)
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""  # Use storageClass do cluster
+    accessModes:
+      - ReadWriteOnce
+
+  # Modo efêmero DESABILITADO em produção
+  ephemeral:
+    enabled: false
+    resetDb: false
+
+  config:
+    # Usar admin/password em produção com secrets externos
+    adminUser: admin
+    adminPassword: "{{ .Values.grafana.adminPasswordSecret }}"  # Será sobrescrito por secret
+    
+    # Desabilitar anonymous em produção
+    auth:
+      anonymous:
+        enabled: false
+        orgRole: "Viewer"
+        disableLoginForm: false
+        disableSignoutMenu: false
+
+    # Configurações de segurança
+    security:
+      adminPasswordPolicy: true
+      cookieSecure: true
+      allowEmbedding: false
+
+  # Ingress com TLS para produção
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      grafana: grafana.yourdomain.com  # Substitua pelo seu domínio
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.yourdomain.com
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"  # Se usar cert-manager
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+# ========================================
+# OBSERVABILITY STACK - PRODUCTION SIZING
+# ========================================
+
+# Loki com persistência
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: ""
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Mimir com persistência
+mimir:
+  enabled: true
+  resources:
+    limits:
+      memory: "4Gi"    # Maior para produção
+      cpu: "2000m"
+    requests:
+      memory: "2Gi"
+      cpu: "1000m"
+
+# Tempo com persistência
+tempo:
+  enabled: true
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+
+# Pyroscope com persistência
+pyroscope:
+  enabled: true
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+
+# MySQL com persistência
+mysql:
+  enabled: true
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+
+# ========================================
+# MONITORING CONFIGURATION
+# ========================================
+monitoring:
+  healthChecks:
+    enabled: true
+    readinessProbe:
+      initialDelaySeconds: 30  # Mais tempo para inicialização
+      periodSeconds: 10
+      timeoutSeconds: 10      # Timeout maior
+      failureThreshold: 5     # Mais tolerante a falhas temporárias
+      successThreshold: 1
+    livenessProbe:
+      initialDelaySeconds: 60  # Ainda mais tempo para liveness
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 5
+      successThreshold: 1
+
+# ========================================
+# SECURITY CONFIGURATION
+# ========================================
+serviceAccount:
+  create: true
+  annotations:
+    # Adicione anotações específicas do cluster se necessário
+    # exemplo: iam.gke.io/gcp-service-account: observability@project.iam.gserviceaccount.com
+
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false  # Alguns components precisam escrever
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+
+# ========================================
+# NETWORK POLICIES (OPCIONAL)
+# ========================================
+networkPolicy:
+  enabled: false  # Habilite se o cluster suportar
+
+# ========================================
+# SECRETS EXTERNOS (PARA PRODUÇÃO)
+# ========================================
+# Use External Secrets Operator ou Sealed Secrets em produção
+externalSecrets:
+  enabled: false
+  # grafana:
+  #   adminPassword:
+  #     secretStore: vault-backend
+  #     key: grafana/admin-password
+  # mysql:
+  #   rootPassword:
+  #     secretStore: vault-backend  
+  #     key: mysql/root-password

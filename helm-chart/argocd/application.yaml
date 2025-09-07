@@ -1,0 +1,139 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-observabilidade
+  namespace: argocd  # Namespace onde o ArgoCD está instalado
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/name: api-observabilidade
+    app.kubernetes.io/component: observability-stack
+    environment: development
+spec:
+  project: default  # Altere para seu ArgoCD Project se usar outro
+
+  # Configuração do source (repositório Git)
+  source:
+    repoURL: https://github.com/gab-796/api-observabilidade.git
+    targetRevision: develop  # ou específique uma branch/tag como "main", "develop", "v1.0.0"
+    path: helm-chart/pdi-gabriel
+
+    # Valores específicos para ArgoCD
+    helm:
+      valueFiles:
+        - values.yaml
+      # Override de valores se necessário
+      parameters:
+        - name: global.environment
+          value: development
+        - name: inventoryApp.image.tag
+          value: v4.0  # ou use uma variável dinâmica
+        - name: grafana.ephemeral.enabled
+          value: "false"  # Persistir dados no ArgoCD
+        - name: grafana.persistence.enabled
+          value: "true"
+
+  # Configuração do destino
+  destination:
+    server: https://kubernetes.default.svc  # Cluster local, altere se for outro cluster
+    namespace: api-app-go
+
+  # Políticas de sincronização
+  syncPolicy:
+    automated:
+      prune: true          # Remove recursos órfãos automaticamente
+      selfHeal: true       # Corrige drift automaticamente
+      allowEmpty: false    # Não permite aplicar manifesto vazio
+    syncOptions:
+      - CreateNamespace=true     # Cria namespace automaticamente
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true          # Remove recursos na ordem correta
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true # Aplica apenas recursos out-of-sync
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Configuração de health checks customizados
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      managedFieldsManagers:
+        - kube-controller-manager
+      jsonPointers:
+        - /spec/replicas  # Ignora mudanças de réplicas do HPA
+
+    # Ignora anotações dinâmicas do Grafana
+    - group: ""
+      kind: ConfigMap
+      name: grafana-config
+      jsonPointers:
+        - /metadata/annotations
+
+  # Health checks customizados para componentes específicos
+  revisionHistoryLimit: 10
+
+---
+# ArgoCD Project (opcional, se quiser isolar este projeto)
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: observability
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "Projeto para stack de observabilidade"
+
+  # Repositórios permitidos
+  sourceRepos:
+    - https://github.com/gab-796/api-observabilidade.git
+    - https://charts.grafana.com/*  # Caso use charts externos
+
+  # Clusters de destino permitidos
+  destinations:
+    - namespace: api-app-go
+      server: https://kubernetes.default.svc
+    - namespace: 'api-app-*'  # Permite namespaces com padrão
+      server: https://kubernetes.default.svc
+
+  # Tipos de recursos permitidos
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: StatefulSet
+
+  # Roles para este projeto
+  roles:
+    - name: admin
+      description: "Admin access to observability project"
+      policies:
+        - p, proj:observability:admin, applications, *, observability/*, allow
+        - p, proj:observability:admin, repositories, *, *, allow
+      groups:
+        - platform-team  # Grupo do seu sistema de autenticação
