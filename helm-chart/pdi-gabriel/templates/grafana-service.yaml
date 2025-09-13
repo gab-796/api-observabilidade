@@ -9,16 +9,18 @@ metadata:
     {{- with .Values.commonLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- if .Values.grafana.service }}
   {{- with .Values.grafana.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+  {{- end }}
 spec:
   ports:
     - name: http
-      port: {{ .Values.grafana.service.port | default 80 }}
+      port: {{ .Values.grafana.ports.http | default 3000 }}
       targetPort: {{ .Values.grafana.ports.http | default 3000 }}
       protocol: TCP
   selector:
     app: {{ .Values.grafana.name }}
-  type: {{ .Values.grafana.service.type | default .Values.services.type | default "ClusterIP" }}
+  type: {{ .Values.services.type | default "ClusterIP" }}
