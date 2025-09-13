@@ -149,9 +149,6 @@ spec:
             name: grafana-dashboard-inventory
 
 ---
-#############################################
-# GRAFANA SERVICE                          #
-#############################################
 apiVersion: v1
 kind: Service
 metadata:
@@ -169,7 +166,7 @@ spec:
   selector:
     app: {{ .Values.grafana.name }}
   type: {{ .Values.services.type }}
-
+---
 {{- if .Values.grafana.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -193,8 +190,6 @@ spec:
   storageClassName: "{{ .Values.grafana.persistence.storageClass }}"
   {{- end }}
   {{- end }}
-{{- end }}
-
 {{- end }}
 
 {{/* InitContainer para modo efêmero resetar banco */}}

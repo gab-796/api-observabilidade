@@ -2,6 +2,10 @@
 
 Este documento explica como usar este Helm chart com ArgoCD para deployments automatizados e GitOps.
 
+## WIP
+O service do Grafana não está sendo criado, todos os outros estao OK via argoCD.
+Debugar isso.
+
 ## Estrutura para ArgoCD
 
 ```

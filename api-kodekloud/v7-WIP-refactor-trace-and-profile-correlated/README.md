@@ -2,10 +2,16 @@
 API de inventário em Go(v1.22) usando o mySQL v8.0 containerizado.
 Use o arquivo da collection Postman para poder fazer as chamadas de API e verificar o funcionamento da aplicação.
 
+# Disclaimer
+Nessa versão, houve um refactoring do código, separando todas as telemetrias em arquivos .go próprios.
+Os arquivos estão na pasta observability.
+
+Isso permite mais clareza no código e também o uso mais efetivo da ferramenta Air.
+
 ## Ideia de uso
 Colocar a aplicação em um container Docker e deixar o container do mysql fora dele.
 Aqui está o endereço da imagem buildada no dockerhub:
-`gab796/inventory_app:v2.2`
+`gab796/inventory_app:v4.1`
 
 ### Uso localmente
 Basta entrar na pasta e executar `go run .`
@@ -244,3 +250,4 @@ https://github.com/grafana/pyroscope/tree/main/examples/language-sdk-instrumenta
 
 Considere usar essa biblioteca tb: 
 https://pkg.go.dev/github.com/grafana/pyroscope-go/godeltaprof
+

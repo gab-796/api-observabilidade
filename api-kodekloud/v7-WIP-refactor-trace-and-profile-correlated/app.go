@@ -10,18 +10,18 @@ import (
 	"os"
 	"strconv"
 	"time"
-	
+
 	"github.com/sirupsen/logrus"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
-	
+
 	// Import para o trace
 	"github.com/XSAM/otelsql"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
 	// Trace para o mux
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
-	
+
 	"example.com/my-inventory/observability"
 )
 
