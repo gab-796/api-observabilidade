@@ -147,27 +147,8 @@ spec:
         - name: dashboard-inventory
           configMap:
             name: grafana-dashboard-inventory
-
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Values.grafana.name }}
-  namespace: {{ .Values.global.namespace }}
-  labels:
-    app: {{ .Values.grafana.name }}
-    {{- with .Values.commonLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
-spec:
-  ports:
-    - port: {{ .Values.grafana.ports.http }}
-      targetPort: {{ .Values.grafana.ports.http }}
-  selector:
-    app: {{ .Values.grafana.name }}
-  type: {{ .Values.services.type }}
----
-{{- if .Values.grafana.persistence.enabled }}
+{{- if and .Values.grafana.enabled .Values.grafana.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -191,9 +172,5 @@ spec:
   {{- end }}
   {{- end }}
 {{- end }}
-
-{{/* InitContainer para modo efêmero resetar banco */}}
-{{- if and .Values.grafana.enabled .Values.grafana.ephemeral.enabled .Values.grafana.ephemeral.resetDb }}
-{{- /* Patch Deployment via strategic merge usando annotation extra seria ideal; aqui simplificamos com segunda renderização não intrusiva se necessário */}}
 {{- end }}
 
