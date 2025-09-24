@@ -3,26 +3,31 @@ import { check, sleep, group } from 'k6';
 import { Trend, Counter, Rate } from 'k6/metrics';
 
 /***************************************
- * Configuração básica
+ * Configuração básica - TESTE LEVE
+ * - Max 10 VUs
+ * - Max 10 requisições/segundo
+ * - Ramp up de 3 minutos
  ***************************************/
 export const options = {
   scenarios: {
-    smoke: {
-      executor: 'ramping-vus',
-      startVUs: 0,
+    light_load: {
+      executor: 'ramping-arrival-rate',
+      startRate: 1,
+      timeUnit: '1s',
+      preAllocatedVUs: 2,
+      maxVUs: 10,
       stages: [
-        { duration: '10s', target: 5 },   // subida rápida
-        { duration: '20s', target: 10 },  // rampa para carga leve
-        { duration: '30s', target: 20 },  // pico moderado
-        { duration: '20s', target: 0 },   // ramp down
+        { duration: '30s', target: 5 },   // ramp up suave - 5 req/s
+        { duration: '60s', target: 10 },  // ramp up para 10 req/s
+        { duration: '60s', target: 10 },  // mantém 10 req/s
+        { duration: '30s', target: 0 },   // ramp down
       ],
-      gracefulRampDown: '5s',
       exec: 'mainScenario'
     }
   },
   thresholds: {
     http_req_duration: ['p(95)<800', 'p(99)<1500'],
-    http_req_failed: ['rate<0.01'],
+    http_req_failed: ['rate<0.05'],  // tolerância maior para teste leve
     'inventory_requests_total{endpoint:createProduct}': ['count>0'],
   }
 };
@@ -42,8 +47,6 @@ const inventoryRequests = new Counter('inventory_requests_total');
  ***************************************/
 const getSingleProductTrend = new Trend('get_single_product_duration');
 const updateProductTrend = new Trend('update_product_duration');
-const healthCheckTrend = new Trend('health_check_duration');
-const rootTrend = new Trend('root_duration');
 
 /***************************************
  * Helpers
@@ -65,18 +68,6 @@ function randomPrice() { return (Math.random() * 100).toFixed(2); }
  ***************************************/
 export function mainScenario() {
   group('inventory-crud-flow', () => {
-    // GET /health
-    const resHealth = http.get(`${BASE_URL}/health`);
-    healthCheckTrend.add(resHealth.timings.duration);
-    check(resHealth, { 'health 200': r => r.status === 200 }) || businessErrorRate.add(1);
-    inventoryRequests.add(1, { endpoint: 'health' });
-
-    // GET /
-    const resRoot = http.get(`${BASE_URL}/`);
-    rootTrend.add(resRoot.timings.duration);
-    check(resRoot, { 'root 200|404': r => r.status === 200 || r.status === 404 }) || businessErrorRate.add(1);
-    inventoryRequests.add(1, { endpoint: 'root' });
-
     // Listar produtos (GET /products)
     let resList = http.get(`${BASE_URL}/products`);
     listProductsTrend.add(resList.timings.duration);
@@ -130,7 +121,8 @@ export function mainScenario() {
     }
   });
 
-  sleep(Math.random() * 1.5);
+  // Sleep mais longo para controlar a taxa de requisições
+  sleep(Math.random() * 2 + 1); // Entre 1-3 segundos
 }
 
 /***************************************

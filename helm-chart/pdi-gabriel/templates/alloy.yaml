@@ -61,9 +61,13 @@ data:
     // Descoberta de pods Kubernetes para logs
     discovery.kubernetes "pods" {
       role = "pod"
+      {{- if .Values.alloy.config.logs.allNamespaces }}
+      // Coleta logs de todos os namespaces do cluster
+      {{- else }}
       namespaces {
         names = ["{{ .Values.global.namespace }}"]
       }
+      {{- end }}
     }
 
     // Adicionar labels dos metadados do Kubernetes

@@ -1,10 +1,5 @@
 # Deploying with ArgoCD
-
 Este documento explica como usar este Helm chart com ArgoCD para deployments automatizados e GitOps.
-
-## WIP
-O service do Grafana não está sendo criado, todos os outros estao OK via argoCD.
-Debugar isso.
 
 ## Estrutura para ArgoCD
 
@@ -25,13 +20,7 @@ helm-chart/
    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
    ```
 
-2. **ArgoCD CLI (opcional):**
-   ```bash
-   curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-   sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
-   ```
-
-3. **Repositório Git acessível pelo ArgoCD**
+2. **Repositório Git acessível pelo ArgoCD**
 
 ## Deploy usando ArgoCD
 
@@ -47,39 +36,15 @@ kubectl apply -f ./argocd/application.yaml
 
 ### 2. Monitorar o deployment
 
-```bash
-# Status via CLI
-make argocd-status
-
-# Sync manual se necessário
-make argocd-sync
-
-# Via UI (port-forward se necessário)
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-# Acesse: https://localhost:8080
-```
+Entre na UI do ARgoCD via o ingress `argocd.local` com as credenciais do ArgoCD obtidas abaixo.
 
 ### 3. Configurar credenciais iniciais
 
 ```bash
-# Obter senha inicial do admin
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
-
-# Login
-argocd login localhost:8080
 ```
 
 ## Configurações importantes
-
-### Valores específicos para ArgoCD
-
-O arquivo `argocd/values-argocd.yaml` contém configurações otimizadas para produção:
-
-- **Persistência habilitada** (grafana, loki, mimir, etc.)
-- **Recursos aumentados** para componentes
-- **Health checks mais tolerantes**
-- **Ingress com TLS**
-- **Autenticação não-anônima no Grafana**
 
 ### Sync Policies
 
@@ -95,28 +60,6 @@ Configurado para ignorar:
 - Mudanças de réplicas (gerenciadas pelo HPA)
 - Anotações dinâmicas do Grafana
 
-## Ambientes diferentes
-
-### Development
-```bash
-# Usar values padrão (ephemeral, recursos menores)
-helm upgrade --install api-observabilidade ./pdi-gabriel -n api-app-go
-```
-
-### Production via ArgoCD
-```bash
-# Aplicar Application que usa values-argocd.yaml
-make argocd-apply
-```
-
-### Staging (exemplo)
-```bash
-# Criar values-staging.yaml e ajustar application.yaml
-helm upgrade --install api-observabilidade ./pdi-gabriel \
-  -n api-app-staging \
-  --values ./pdi-gabriel/values.yaml \
-  --values ./argocd/values-staging.yaml
-```
 
 ## Troubleshooting
 
@@ -194,15 +137,3 @@ argocd app get api-observabilidade --refresh
 # Diff entre Git e cluster
 argocd app diff api-observabilidade
 ```
-
-## Considerações de segurança
-
-Para produção, considere:
-
-1. **Usar RBAC granular** (Projects customizados)
-2. **External Secrets** para senhas
-3. **Network Policies** se suportado
-4. **Pod Security Standards**
-5. **TLS/mTLS** entre componentes
-6. **Backup** de PVCs importantes
-7. **Monitoring** do próprio ArgoCD

@@ -16,7 +16,7 @@ global:
 inventoryApp:
   enabled: true
   image:
-    tag: v4.0  # Use image tag específica, não "latest"
+    tag: v4.0
     pullPolicy: IfNotPresent  # Mais eficiente no ArgoCD
 
   # HPA específico para produção
@@ -29,7 +29,7 @@ inventoryApp:
 
   resources:
     limits:
-      memory: "1Gi"    # Aumentar para produção
+      memory: "1Gi"
       cpu: "500m"
     requests:
       memory: "512Mi"
@@ -40,7 +40,6 @@ inventoryApp:
 # ========================================
 grafana:
   enabled: true
-  # NOVO: garante criação do Service
   service:
     enabled: true          # Se o subchart verificar esta flag
     type: ClusterIP
@@ -198,6 +197,15 @@ securityContext:
 # ========================================
 networkPolicy:
   enabled: false  # Habilite se o cluster suportar
+
+# ========================================
+# ALLOY CONFIGURATION - LOGS DE TODOS OS NAMESPACES
+# ========================================
+alloy:
+  enabled: true
+  config:
+    logs:
+      allNamespaces: true  # 🔥 HABILITA LOGS DE TODOS OS NAMESPACES
 
 # ========================================
 # SECRETS EXTERNOS (PARA PRODUÇÃO)

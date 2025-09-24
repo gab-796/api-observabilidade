@@ -171,13 +171,13 @@ grafana:
     users:
       allowSignUp: false
 
-    # Features e plugins (como seu arquivo original)
+    # Features e plugins
     featureToggles: "traceqlEditor,metricsSummary"
 
     plugins:
       install: "https://storage.googleapis.com/integration-artifacts/grafana-exploretraces-app/grafana-exploretraces-app-latest.zip;grafana-traces-app"
 
-  # Data sources configuration (compatível com seu ConfigMap)
+  # Data sources configuration
   datasources:
     tempo:
       enabled: true
@@ -197,12 +197,21 @@ grafana:
       enabled: true
       url: http://mimir:9009/prometheus
 
-  # Ingress configuration
+# ========================================
+# GRAFANA INGRESS CONFIGURATION
+# ========================================
+
   ingress:
     enabled: true
     ingressClassName: nginx
     hosts:
-      grafana: grafana-web.local
+      - host: grafana-web.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: grafana
+              port: 3000
     exposeStack: false
     annotations: {}
     tls: []
@@ -259,6 +268,9 @@ alloy:
       level: info
       format: json
 
+    logs:
+      allNamespaces: true  # Se true, coleta logs de todos os namespaces do cluster
+
   securityContext:
     runAsNonRoot: true
     runAsUser: 473
@@ -285,17 +297,17 @@ otelCollector:
 
   image:
     repository: otel/opentelemetry-collector-contrib
-    tag: "0.123.0-amd64"  # Mesma versão do seu manifesto
+    tag: "0.123.0-amd64"
     pullPolicy: IfNotPresent
 
   ports:
     otlpGrpc: 4317
     otlpHttp: 4318
-    healthCheck: 13133  # Mesma porta do seu manifesto
+    healthCheck: 13133
 
   config:
     logging:
-      level: warn  # Mesmo nível do seu manifesto
+      level: warn
 
     prometheus:
       scrapeInterval: 15s
@@ -303,11 +315,11 @@ otelCollector:
       mimirScrapeInterval: 30s
 
     datadog:
-      enabled: false  # Para controlar a configuração comentada do DD
+      enabled: false
 
   resources:
     limits:
-      memory: "1Gi"    # Mesmos recursos do seu manifesto
+      memory: "1Gi"
       cpu: "1000m"
     requests:
       memory: "128Mi"
@@ -411,8 +423,8 @@ mimir:
 
   config:
     multitenancyEnabled: false
-    internalMetricsPort: 9009      # Porta para métricas internas
-    remoteWritePort: 9009          # Porta para remote write (conforme seu manifesto)
+    internalMetricsPort: 9009
+    remoteWritePort: 9009
     server:
       logLevel: warn
     storage:
@@ -422,7 +434,7 @@ mimir:
         rulerDir: /data/ruler
     ingester:
       replicationFactor: 1
-      outOfOrderTimeWindow: 10m    # Aceitar samples até 10 minutos fora de ordem
+      outOfOrderTimeWindow: 10m
     limits:
       maxGlobalSeriesPerUser: 10000000
       ingestionRate: 100000
@@ -468,23 +480,6 @@ pyroscope:
     requests:
       memory: "512Mi"
       cpu: "500m"
-
-# ========================================
-# INGRESS CONFIGURATION
-# ========================================
-ingress:
-  enabled: false
-  className: nginx
-  annotations: {}
-  hosts:
-    - host: grafana.local
-      paths:
-        - path: /
-          pathType: Prefix
-          service:
-            name: grafana
-            port: 3000
-  tls: []
 
 # ========================================
 # PERSISTENCE (OPCIONAL)
@@ -534,20 +529,6 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 50
   targetMemoryUtilizationPercentage: 80
-
-# ========================================
-# NETWORK POLICIES (OPCIONAL)
-# ========================================
-networkPolicy:
-  enabled: false
-
-# ========================================
-# SERVICE MONITOR FOR PROMETHEUS OPERATOR (OPCIONAL)
-# ========================================
-serviceMonitor:
-  enabled: false
-  interval: 30s
-  scrapeTimeout: 10s
 
 # ========================================
 # ADDITIONAL CONFIGURATION
