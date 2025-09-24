@@ -214,6 +214,17 @@ alloy:
       allNamespaces: true  # 🔥 HABILITA LOGS DE TODOS OS NAMESPACES
 
 # ========================================
+# OTEL COLLECTOR - KUBE STATE METRICS
+# ========================================
+otelCollector:
+  enabled: true
+  config:
+    prometheus:
+      scrapeKubeStateMetrics: true  # 🔥 HABILITA COLETA DO KUBE-STATE-METRICS
+      kubeStateMetrics:
+        namespaces: ["ksm"]  # 🎯 Namespace onde o kube-state-metrics está instalado
+
+# ========================================
 # SECRETS EXTERNOS (PARA PRODUÇÃO)
 # ========================================
 # Use External Secrets Operator ou Sealed Secrets em produção

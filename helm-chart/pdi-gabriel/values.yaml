@@ -314,6 +314,13 @@ otelCollector:
       scrapeMimir: true
       mimirScrapeInterval: 30s
 
+      # Kube State Metrics configuration
+      scrapeKubeStateMetrics: true
+      kubeStateMetrics:
+        scrapeInterval: 30s
+        metricsPath: /metrics
+        namespaces: ["ksm"]  # Namespace onde o kube-state-metrics está instalado
+
     datadog:
       enabled: false
 
