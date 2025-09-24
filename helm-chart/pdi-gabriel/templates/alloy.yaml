@@ -25,6 +25,7 @@ rules:
       - pods/log
       - ingresses
       - configmaps
+      - namespaces
     verbs: ["get", "list", "watch"]
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources:
@@ -61,9 +62,7 @@ data:
     // Descoberta de pods Kubernetes para logs
     discovery.kubernetes "pods" {
       role = "pod"
-      {{- if .Values.alloy.config.logs.allNamespaces }}
-      // Coleta logs de todos os namespaces do cluster
-      {{- else }}
+      {{- if not .Values.alloy.config.logs.allNamespaces }}
       namespaces {
         names = ["{{ .Values.global.namespace }}"]
       }
