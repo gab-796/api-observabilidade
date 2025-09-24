@@ -17,7 +17,7 @@ data:
           grpc:
             endpoint: "0.0.0.0:{{ .Values.otelCollector.ports.otlpGrpc }}"
 
-      # Configuração para coletar métricas da app (baseado no seu ConfigMap)
+      # Configuração para coletar métricas da app
       prometheus:
         config:
           scrape_configs:
@@ -35,6 +35,40 @@ data:
               metrics_path: /metrics
             {{- end }}
 
+            {{- if .Values.otelCollector.config.prometheus.scrapeKubeStateMetrics }}
+            # Kube State Metrics - descobre automaticamente via service discovery
+            - job_name: 'kube-state-metrics'
+              kubernetes_sd_configs:
+                - role: service
+                  {{- if .Values.otelCollector.config.prometheus.kubeStateMetrics.namespaces }}
+                  namespaces:
+                    names: {{ toYaml .Values.otelCollector.config.prometheus.kubeStateMetrics.namespaces | nindent 22 }}
+                  {{- end }}
+              relabel_configs:
+                # Apenas serviços com nome contendo kube-state-metrics
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: .*kube-state-metrics.*
+
+                # Usar porta de métricas (geralmente 8080)
+                - source_labels: [__address__, __meta_kubernetes_service_port_number]
+                  action: replace
+                  target_label: __address__
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+
+                # Labels úteis
+                - source_labels: [__meta_kubernetes_service_name]
+                  target_label: service
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: namespace
+                - target_label: job
+                  replacement: kube-state-metrics
+
+              scrape_interval: {{ .Values.otelCollector.config.prometheus.kubeStateMetrics.scrapeInterval | default "30s" }}
+              metrics_path: {{ .Values.otelCollector.config.prometheus.kubeStateMetrics.metricsPath | default "/metrics" }}
+            {{- end }}
+
     processors:
       batch: {}
 
@@ -45,7 +79,7 @@ data:
         tls:
           insecure: true
 
-      # Exporter para métricas (Mimir) - usando a porta correta do seu manifesto
+      # Exporter para métricas (Mimir)
       prometheusremotewrite:
         endpoint: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort | default 9009 }}/api/v1/push
 
@@ -66,6 +100,40 @@ data:
           receivers: [prometheus]
           exporters: [prometheusremotewrite]
 ---
+{{- if .Values.otelCollector.config.prometheus.scrapeKubeStateMetrics }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.otelCollector.name }}
+  namespace: {{ .Values.global.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.otelCollector.name }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - services
+      - endpoints
+      - nodes
+      - pods
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.otelCollector.name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.otelCollector.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.otelCollector.name }}
+    namespace: {{ .Values.global.namespace }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -89,19 +157,22 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if .Values.otelCollector.config.prometheus.scrapeKubeStateMetrics }}
+      serviceAccountName: {{ .Values.otelCollector.name }}
+      {{- end }}
       containers:
         - name: {{ .Values.otelCollector.name }}
           image: {{ .Values.otelCollector.image.repository }}:{{ .Values.otelCollector.image.tag }}
-          # Comando igual ao seu manifesto original
+          # Comando igual ao manifesto original
           command:
             - "/otelcol-contrib"
             - "--config=/conf/otel-collector-config.yaml"
           env:
-            # Env var igual ao seu manifesto original
+            # Env var igual ao manifesto original
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.tempo.name }}:{{ .Values.tempo.ports.otlpGrpc | quote }}
             {{- if .Values.otelCollector.config.datadog.enabled }}
-            # Configuração comentada do Datadog (mantendo do seu manifesto)
+            # Configuração comentada do Datadog (mantendo do manifesto)
             # - name: DD_API_KEY_GO_LAB
             #   valueFrom:
             #     secretKeyRef:
@@ -116,13 +187,13 @@ spec:
             - containerPort: {{ .Values.otelCollector.ports.healthCheck }}
               name: health
           volumeMounts:
-            # Mount path igual ao seu manifesto original
+            # Mount path igual ao manifesto original
             - name: config-vol
               mountPath: /conf
           resources:
             {{- toYaml .Values.otelCollector.resources | nindent 12 }}
           {{- if .Values.monitoring.healthChecks.enabled }}
-          # Health checks comentados conforme seu manifesto original
+          # Health checks comentados conforme manifesto original
           # livenessProbe:
           #   httpGet:
           #     path: /
@@ -141,7 +212,7 @@ spec:
           #   timeoutSeconds: 5
           {{- end }}
       volumes:
-        # Nome do volume igual ao seu manifesto original
+        # Nome do volume igual ao manifesto original
         - name: config-vol
           configMap:
             name: {{ .Values.otelCollector.name }}-config
