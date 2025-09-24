@@ -82,7 +82,13 @@ grafana:
     enabled: true
     ingressClassName: nginx
     hosts:
-      grafana: grafana-web.local
+      - host: grafana-web.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: grafana
+              port: 3000
     annotations:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 

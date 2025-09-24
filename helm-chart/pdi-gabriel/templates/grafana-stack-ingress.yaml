@@ -17,16 +17,20 @@ metadata:
 spec:
   ingressClassName: {{ .Values.grafana.ingress.ingressClassName | default "nginx" }}
   rules:
-    - host: {{ .Values.grafana.ingress.hosts.grafana | default "grafana-web.local" }}
+    {{- range .Values.grafana.ingress.hosts }}
+    - host: {{ .host }}
       http:
         paths:
-          - path: /
-            pathType: Prefix
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ .Values.grafana.name }}
+                name: {{ .service.name }}
                 port:
-                  number: {{ .Values.grafana.ports.http }}
+                  number: {{ .service.port }}
+          {{- end }}
+    {{- end }}
 
     {{- if .Values.grafana.ingress.exposeStack }}
     # Mimir (métricas)
