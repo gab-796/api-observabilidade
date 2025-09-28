@@ -203,7 +203,7 @@ data:
 
       rule {
         target_label = "cluster"
-        replacement  = "{{ .Values.alloy.cluster.name }}"
+        replacement  = "{{ .Values.alloy.cluster.name | default "unknown-cluster" }}"
       }
       // Garantir que pods sem label app tenham service baseado no nome do container
       rule {

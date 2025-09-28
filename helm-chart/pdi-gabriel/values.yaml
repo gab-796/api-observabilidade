@@ -254,6 +254,10 @@ alloy:
   replicaCount: 1
   stabilityLevel: "public-preview" # Permite usar o pyroscope.receive_http
 
+  # Cluster identification
+  cluster:
+    name: "kubernetes-cluster"  # Default cluster name (override in values-argocd.yaml)
+
   # Controller configuration (seguindo padrão oficial do Grafana Alloy)
   controller:
     # Type of controller to use for deploying Grafana Alloy in the cluster.
