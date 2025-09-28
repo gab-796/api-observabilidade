@@ -136,17 +136,25 @@ data:
     // Quando rodando como DaemonSet com hostVolumes, o Alloy pode
     // coletar métricas similares ao node-exporter diretamente do host.
     // Exemplo de configuração adicional:
-    
+
     // prometheus.exporter.unix "node" {
     //   procfs_path = "/host/proc"
     //   sysfs_path  = "/host/sys"
     //   rootfs_path = "/host/rootfs"
     // }
-    
+
     // prometheus.scrape "node_metrics" {
     //   targets    = prometheus.exporter.unix.node.targets
     //   forward_to = [prometheus.remote_write.mimir.receiver]
     // }
+
+    loki.source.journal "node_logs" {
+      path       = "/var/log/journal" // Requer o volume hostPath
+      forward_to = [loki.relabel.node_logs.receiver]
+      labels     = {
+        "job" = "integrations/node-journal",
+      }
+    }
     {{- end }}
 
     // Descoberta de pods Kubernetes para logs
@@ -188,6 +196,15 @@ data:
         replacement = "kubernetes-pods"
       }
 
+      rule {
+        source_labels = ["__alloy_kubernetes_node_name"]
+        target_label  = "node"
+      }
+
+      rule {
+        target_label = "cluster"
+        replacement  = "{{ .Values.alloy.cluster.name }}"
+      }
       // Garantir que pods sem label app tenham service baseado no nome do container
       rule {
         source_labels = ["__meta_kubernetes_pod_container_name"]
@@ -419,7 +436,7 @@ spec:
           configMap:
             name: {{ .Values.alloy.name }}-config
         {{- if eq .Values.alloy.controller.type "daemonset" }}
-        
+
         # 🔥 VOLUMES CRÍTICOS para coleta de logs de TODOS os nodes
         - name: varlog
           hostPath:
@@ -430,7 +447,7 @@ spec:
         - name: varlogpods
           hostPath:
             path: /var/log/pods
-            
+
         # Volumes de host para coleta de métricas de sistema (opcionais)
         {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
         - name: proc

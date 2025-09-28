@@ -212,6 +212,10 @@ alloy:
   name: alloy
   replicaCount: 1
 
+  # 🏷️ Cluster identification
+  cluster:
+    name: "kind-karavela-brrioln035606"  # Nome do seu cluster Kind
+
   # ⚙️ Controller Configuration - FORÇA DaemonSet (sobrescreve values.yaml)
   controller:
     # Tipo de controller - DEVE ser 'daemonset' para coleta completa
