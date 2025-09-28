@@ -253,6 +253,40 @@ alloy:
   name: alloy
   replicaCount: 1
   stabilityLevel: "public-preview" # Permite usar o pyroscope.receive_http
+  
+  # Tipo de deployment: "deployment" ou "daemonset"
+  # - deployment: Para coleta centralizada (padrão)
+  # - daemonset: Para coleta por node (logs de host, node metrics, etc.)
+  deploymentType: "deployment"
+
+  # Configurações específicas para DaemonSet
+  daemonset:
+    hostNetwork: false  # Set true para acessar métricas de host
+    hostPID: false      # Set true para coletar métricas de processo
+    dnsPolicy: "ClusterFirst"  # ClusterFirstWithHostNet se hostNetwork=true
+    
+    # Node selector para DaemonSet
+    nodeSelector: {}
+    # Exemplo:
+    # nodeSelector:
+    #   kubernetes.io/os: linux
+    
+    # Tolerations para rodar em nodes específicos (ex: master nodes)
+    tolerations: []
+    # Exemplo:
+    # tolerations:
+    # - key: node-role.kubernetes.io/master
+    #   operator: Exists
+    #   effect: NoSchedule
+    
+    # Volumes de host para coleta de métricas de sistema
+    hostVolumes:
+      proc:
+        enabled: false  # /proc para métricas de CPU, memória, etc.
+      sys:
+        enabled: false  # /sys para métricas de sistema
+      rootfs:
+        enabled: false  # / para métricas de filesystem
 
   image:
     repository: grafana/alloy

@@ -93,7 +93,7 @@ grafana:
       nginx.ingress.kubernetes.io/ssl-redirect: "false"
 
 # ========================================
-# OBSERVABILITY STACK - PRODUCTION SIZING
+# OBSERVABILITY STACK - RESOURCES
 # ========================================
 
 # Loki com persistência
@@ -209,9 +209,30 @@ networkPolicy:
 # ========================================
 alloy:
   enabled: true
+  # Tipo de deployment - escolha entre "deployment" ou "daemonset"
+  #deploymentType: "deployment"  # Para logs centralizados
+  deploymentType: "daemonset"   # Para coleta por node (descomente se necessário)
+
   config:
     logs:
       allNamespaces: true  # 🔥 HABILITA LOGS DE TODOS OS NAMESPACES
+
+  # Configuração para DaemonSet (descomente se usar deploymentType: "daemonset")
+  # daemonset:
+  #   hostNetwork: true
+  #   hostPID: true
+  #   dnsPolicy: "ClusterFirstWithHostNet"
+  #   tolerations:
+  #     - key: node-role.kubernetes.io/master
+  #       operator: Exists
+  #       effect: NoSchedule
+  #   hostVolumes:
+  #     proc:
+  #       enabled: true
+  #     sys:
+  #       enabled: true
+  #     rootfs:
+  #       enabled: true
 
 # ========================================
 # OTEL COLLECTOR - KUBE STATE METRICS
