@@ -209,8 +209,10 @@ networkPolicy:
 # ========================================
 alloy:
   enabled: true
+  name: alloy
+  replicaCount: 1
 
-  # ⚙️ Controller Configuration - Estrutura oficial do Grafana Alloy Chart
+  # ⚙️ Controller Configuration - FORÇA DaemonSet (sobrescreve values.yaml)
   controller:
     # Tipo de controller - DEVE ser 'daemonset' para coleta completa
     type: "daemonset"  # Options: "deployment", "daemonset", "statefulset"
@@ -245,7 +247,7 @@ alloy:
       proc:
         enabled: true    # /proc - CPU, memória, processos
       sys:
-        enabled: true    # /sys - Informações de hardware  
+        enabled: true    # /sys - Informações de hardware
       rootfs:
         enabled: true    # / - Filesystem metrics# ========================================
 # OTEL COLLECTOR - KUBE STATE METRICS
