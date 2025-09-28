@@ -162,12 +162,17 @@ data:
 
       rule {
         target_label = "cluster"
-        replacement  = "{{ .Values.alloy.cluster.name | default "unknown-cluster" }}"
+        replacement  = env("CLUSTER_NAME")
+      }
+
+      rule {
+        target_label = "node"
+        replacement  = env("NODE_NAME")
       }
 
       rule {
         source_labels = ["__journal__hostname"]
-        target_label  = "node"
+        target_label  = "hostname"
       }
 
       rule {
@@ -198,7 +203,12 @@ data:
 
       rule {
         target_label = "cluster"
-        replacement  = "{{ .Values.alloy.cluster.name | default "unknown-cluster" }}"
+        replacement  = env("CLUSTER_NAME")
+      }
+
+      rule {
+        target_label = "node"
+        replacement  = env("NODE_NAME")
       }
 
       rule {
@@ -253,13 +263,13 @@ data:
       }
 
       rule {
-        source_labels = ["__alloy_kubernetes_node_name"]
+        source_labels = ["__meta_kubernetes_node_name"]
         target_label  = "node"
       }
 
       rule {
         target_label = "cluster"
-        replacement  = "{{ .Values.alloy.cluster.name | default "unknown-cluster" }}"
+        replacement  = env("CLUSTER_NAME")
       }
       // Garantir que pods sem label app tenham service baseado no nome do container
       rule {
@@ -409,6 +419,22 @@ spec:
             {{- if .Values.alloy.stabilityLevel }}
             - --stability.level={{ .Values.alloy.stabilityLevel }}
             {{- end }}
+          env:
+            # 🎯 Auto-descoberta do node e cluster via Kubernetes API
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: CLUSTER_NAME
+              value: "{{ .Values.alloy.cluster.name | default "karavela-brrioln035606-cluster" }}"
           ports:
             - containerPort: {{ .Values.alloy.ports.http }}
               name: http-metrics

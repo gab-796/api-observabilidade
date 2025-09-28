@@ -254,9 +254,13 @@ alloy:
   replicaCount: 1
   stabilityLevel: "public-preview" # Permite usar o pyroscope.receive_http
 
-  # Cluster identification
+  # 🏷️ Cluster identification (auto-descoberta via Kubernetes API)
+  # O Alloy detecta automaticamente via environment variables:
+  # - NODE_NAME: spec.nodeName do pod (ex: karavela-brrioln035606-worker)
+  # - HOSTNAME: hostname do node onde o pod está rodando
+  # - CLUSTER_NAME: nome configurado aqui ou auto-detectado
   cluster:
-    name: "kubernetes-cluster"  # Default cluster name (override in values-argocd.yaml)
+    name: "auto-detected-cluster"  # Fallback se não overrideado no values-argocd.yaml
 
   # Controller configuration (seguindo padrão oficial do Grafana Alloy)
   controller:

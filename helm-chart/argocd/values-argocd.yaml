@@ -212,9 +212,12 @@ alloy:
   name: alloy
   replicaCount: 1
 
-  # 🏷️ Cluster identification
+  # 🏷️ Cluster identification (auto-detectado via Kubernetes API)
+  # O Alloy detecta automaticamente os nomes dos nodes via environment variables:
+  # - NODE_NAME: karavela-brrioln035606-control-plane, karavela-brrioln035606-worker, etc.
+  # - CLUSTER_NAME: Baseado no padrão dos seus nodes
   cluster:
-    name: "kind-karavela-brrioln035606"  # Nome do seu cluster Kind
+    name: "karavela-brrioln035606-cluster"  # Override do auto-detect para seu cluster específico
 
   # ⚙️ Controller Configuration - FORÇA DaemonSet (sobrescreve values.yaml)
   controller:
