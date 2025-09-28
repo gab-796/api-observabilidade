@@ -263,6 +263,7 @@ alloy:
   daemonset:
     hostNetwork: false  # Set true para acessar métricas de host
     hostPID: false      # Set true para coletar métricas de processo
+    privileged: false   # Set true para acesso completo ao sistema host
     dnsPolicy: "ClusterFirst"  # ClusterFirstWithHostNet se hostNetwork=true
     
     # Node selector para DaemonSet

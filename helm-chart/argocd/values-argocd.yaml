@@ -211,28 +211,41 @@ alloy:
   enabled: true
   # Tipo de deployment - escolha entre "deployment" ou "daemonset"
   #deploymentType: "deployment"  # Para logs centralizados
-  deploymentType: "daemonset"   # Para coleta por node (descomente se necessário)
 
   config:
     logs:
       allNamespaces: true  # 🔥 HABILITA LOGS DE TODOS OS NAMESPACES
 
-  # Configuração para DaemonSet (descomente se usar deploymentType: "daemonset")
-  # daemonset:
-  #   hostNetwork: true
-  #   hostPID: true
-  #   dnsPolicy: "ClusterFirstWithHostNet"
-  #   tolerations:
-  #     - key: node-role.kubernetes.io/master
-  #       operator: Exists
-  #       effect: NoSchedule
-  #   hostVolumes:
-  #     proc:
-  #       enabled: true
-  #     sys:
-  #       enabled: true
-  #     rootfs:
-  #       enabled: true
+  # 🔥 CONFIGURAÇÃO COMPLETA PARA MONITORAMENTO DE CLUSTER (DaemonSet)
+  # Para habilitar, mude deploymentType para "daemonset" e descomente abaixo:
+  deploymentType: "daemonset"
+  daemonset:
+    hostNetwork: true     # Acesso à rede do host
+    hostPID: true        # Acesso aos processos do host
+    privileged: true     # Acesso completo ao sistema (cuidado em produção!)
+    dnsPolicy: "ClusterFirstWithHostNet"
+
+    # Tolerations para rodar em todos os nodes (incluindo masters)
+    tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
+    # Node selector para Linux apenas (opcional)
+    nodeSelector:
+      kubernetes.io/os: linux
+
+    # Volumes de host para métricas completas
+    hostVolumes:
+      proc:
+        enabled: true    # CPU, memória, processos
+      sys:
+        enabled: true    # Informações de hardware
+      rootfs:
+        enabled: true    # Filesystem metrics
 
 # ========================================
 # OTEL COLLECTOR - KUBE STATE METRICS

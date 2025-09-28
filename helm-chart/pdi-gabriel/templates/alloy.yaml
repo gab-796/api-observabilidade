@@ -14,24 +14,94 @@ kind: ClusterRole
 metadata:
   name: {{ .Values.alloy.name }}
 rules:
+  # Core resources
   - apiGroups: [""]
     resources:
       - nodes
       - nodes/proxy
+      - nodes/stats
       - nodes/metrics
       - services
       - endpoints
       - pods
       - pods/log
-      - ingresses
+      - pods/status
       - configmaps
+      - secrets
       - namespaces
+      - events
+      - persistentvolumes
+      - persistentvolumeclaims
+      - componentstatuses
     verbs: ["get", "list", "watch"]
+  
+  # Apps resources
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+  
+  # Networking resources
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources:
       - ingresses
+      - networkpolicies
     verbs: ["get", "list", "watch"]
-  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+  
+  # Autoscaling resources
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  
+  # Batch resources
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  
+  # Storage resources
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+      - volumeattachments
+    verbs: ["get", "list", "watch"]
+  
+  # RBAC resources (para monitorar permissões)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+  
+  # Policy resources
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch"]
+  
+  # Coordination resources (para leader election se necessário)
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+    verbs: ["get", "list", "watch"]
+  
+  # Metrics and monitoring endpoints
+  - nonResourceURLs: 
+      - "/metrics"
+      - "/metrics/cadvisor"
+      - "/metrics/resource"
+      - "/metrics/probes"
+      - "/api/v1/nodes/*/proxy/metrics"
+      - "/api/v1/nodes/*/proxy/metrics/cadvisor"
+      - "/api/v1/nodes/*/proxy/metrics/resource"
+      - "/api/v1/nodes/*/proxy/metrics/probes"
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -58,6 +128,26 @@ data:
       level  = "{{ .Values.alloy.config.logging.level }}"
       format = "{{ .Values.alloy.config.logging.format }}"
     }
+
+    {{- if eq .Values.alloy.deploymentType "daemonset" }}
+    // ========================================
+    // NODE EXPORTER CONFIGURATION (DaemonSet)
+    // ========================================
+    // Quando rodando como DaemonSet com hostVolumes, o Alloy pode
+    // coletar métricas similares ao node-exporter diretamente do host.
+    // Exemplo de configuração adicional:
+    
+    // prometheus.exporter.unix "node" {
+    //   procfs_path = "/host/proc"
+    //   sysfs_path  = "/host/sys"
+    //   rootfs_path = "/host/rootfs"
+    // }
+    
+    // prometheus.scrape "node_metrics" {
+    //   targets    = prometheus.exporter.unix.node.targets
+    //   forward_to = [prometheus.remote_write.mimir.receiver]
+    // }
+    {{- end }}
 
     // Descoberta de pods Kubernetes para logs
     discovery.kubernetes "pods" {
@@ -260,12 +350,29 @@ spec:
           resources:
             {{- toYaml .Values.alloy.resources | nindent 12 }}
           securityContext:
+            {{- if eq .Values.alloy.deploymentType "daemonset" }}
+            # SecurityContext para DaemonSet (precisa de mais permissões)
+            runAsNonRoot: false
+            runAsUser: 0  # Root necessário para acessar /proc, /sys no host
+            privileged: {{ .Values.alloy.daemonset.privileged | default false }}
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: false
+            capabilities:
+              add:
+                - SYS_PTRACE  # Para ler /proc
+                - SYS_ADMIN   # Para métricas de sistema
+                - DAC_READ_SEARCH  # Para ler arquivos do sistema
+              drop:
+                - NET_RAW
+            {{- else }}
+            # SecurityContext padrão para Deployment
             runAsNonRoot: {{ .Values.alloy.securityContext.runAsNonRoot }}
             runAsUser: {{ .Values.alloy.securityContext.runAsUser }}
             allowPrivilegeEscalation: {{ .Values.alloy.securityContext.allowPrivilegeEscalation }}
             capabilities:
               drop:
                 {{- toYaml .Values.alloy.securityContext.capabilities.drop | nindent 16 }}
+            {{- end }}
       volumes:
         - name: alloy-storage
           {{- if eq .Values.alloy.deploymentType "daemonset" }}
