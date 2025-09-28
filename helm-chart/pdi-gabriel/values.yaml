@@ -253,7 +253,7 @@ alloy:
   name: alloy
   replicaCount: 1
   stabilityLevel: "public-preview" # Permite usar o pyroscope.receive_http
-  
+
   # Controller configuration (seguindo padrão oficial do Grafana Alloy)
   controller:
     # Type of controller to use for deploying Grafana Alloy in the cluster.
@@ -261,19 +261,18 @@ alloy:
     type: 'deployment'  # Para coleta centralizada (padrão)
     # type: 'daemonset'   # Para coleta por node (logs de host, node metrics, etc.)
 
-  # Configurações específicas para DaemonSet
-  daemonset:
+    # 🔥 Configurações para DaemonSet (usando estrutura oficial do chart)
+    # Quando controller.type = "daemonset", estas configurações são aplicadas:
     hostNetwork: false  # Set true para acessar métricas de host
     hostPID: false      # Set true para coletar métricas de processo
-    privileged: false   # Set true para acesso completo ao sistema host
     dnsPolicy: "ClusterFirst"  # ClusterFirstWithHostNet se hostNetwork=true
-    
-    # Node selector para DaemonSet
+
+    # Node selector para controlar onde o DaemonSet/Deployment roda
     nodeSelector: {}
     # Exemplo:
     # nodeSelector:
     #   kubernetes.io/os: linux
-    
+
     # Tolerations para rodar em nodes específicos (ex: master nodes)
     tolerations: []
     # Exemplo:
@@ -281,7 +280,10 @@ alloy:
     # - key: node-role.kubernetes.io/master
     #   operator: Exists
     #   effect: NoSchedule
-    
+
+  # Configurações específicas para DaemonSet (mantidas para compatibilidade)
+  daemonset:
+
     # Volumes de host para coleta de métricas de sistema
     hostVolumes:
       proc:

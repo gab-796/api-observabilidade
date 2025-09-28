@@ -312,17 +312,17 @@ spec:
     spec:
       serviceAccountName: {{ .Values.alloy.name }}
       {{- if eq .Values.alloy.controller.type "daemonset" }}
-      # Configurações específicas para DaemonSet
-      hostNetwork: {{ .Values.alloy.daemonset.hostNetwork | default false }}
-      hostPID: {{ .Values.alloy.daemonset.hostPID | default false }}
-      dnsPolicy: {{ .Values.alloy.daemonset.dnsPolicy | default "ClusterFirst" }}
-      {{- if .Values.alloy.daemonset.nodeSelector }}
+      # 🔥 Configurações específicas para DaemonSet (seguindo estrutura oficial Grafana Alloy)
+      hostNetwork: {{ .Values.alloy.controller.hostNetwork | default false }}
+      hostPID: {{ .Values.alloy.controller.hostPID | default false }}
+      dnsPolicy: {{ .Values.alloy.controller.dnsPolicy | default "ClusterFirst" }}
+      {{- if .Values.alloy.controller.nodeSelector }}
       nodeSelector:
-        {{- toYaml .Values.alloy.daemonset.nodeSelector | nindent 8 }}
+        {{- toYaml .Values.alloy.controller.nodeSelector | nindent 8 }}
       {{- end }}
-      {{- if .Values.alloy.daemonset.tolerations }}
+      {{- if .Values.alloy.controller.tolerations }}
       tolerations:
-        {{- toYaml .Values.alloy.daemonset.tolerations | nindent 8 }}
+        {{- toYaml .Values.alloy.controller.tolerations | nindent 8 }}
       {{- end }}
       {{- end }}
       containers:
