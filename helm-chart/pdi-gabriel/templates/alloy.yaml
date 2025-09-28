@@ -155,6 +155,62 @@ data:
         "job" = "integrations/node-journal",
       }
     }
+
+    // Processamento dos logs de journal/systemd
+    loki.relabel "node_logs" {
+      forward_to = [loki.write.loki.receiver]
+
+      rule {
+        target_label = "cluster"
+        replacement  = "{{ .Values.alloy.cluster.name | default "unknown-cluster" }}"
+      }
+
+      rule {
+        source_labels = ["__journal__hostname"]
+        target_label  = "node"
+      }
+
+      rule {
+        source_labels = ["__journal__systemd_unit"]
+        target_label  = "unit"
+      }
+
+      rule {
+        source_labels = ["__journal_priority_keyword"]
+        target_label  = "level"
+      }
+    }
+
+    // ⚠️ ALTERNATIVA: Logs de sistema via arquivos (mais compatível com Kind/Docker)
+    loki.source.file "system_logs" {
+      targets = [
+        {__path__ = "/var/log/syslog", job = "system/syslog"},
+        {__path__ = "/var/log/kern.log", job = "system/kernel"},
+        {__path__ = "/var/log/auth.log", job = "system/auth"},
+        {__path__ = "/var/log/messages", job = "system/messages"},
+      ]
+      forward_to = [loki.relabel.system_logs.receiver]
+    }
+
+    // Processamento dos logs de sistema via arquivo
+    loki.relabel "system_logs" {
+      forward_to = [loki.write.loki.receiver]
+
+      rule {
+        target_label = "cluster"
+        replacement  = "{{ .Values.alloy.cluster.name | default "unknown-cluster" }}"
+      }
+
+      rule {
+        source_labels = ["__meta_filepath"]
+        target_label  = "filename"
+      }
+
+      rule {
+        source_labels = ["job"]
+        target_label  = "source"
+      }
+    }
     {{- end }}
 
     // Descoberta de pods Kubernetes para logs
