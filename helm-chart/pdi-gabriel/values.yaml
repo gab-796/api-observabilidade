@@ -258,8 +258,8 @@ alloy:
   controller:
     # Type of controller to use for deploying Grafana Alloy in the cluster.
     # Must be one of 'daemonset', 'deployment', or 'statefulset'.
-    type: 'deployment'  # Para coleta centralizada (padrão)
-    # type: 'daemonset'   # Para coleta por node (logs de host, node metrics, etc.)
+    #type: 'deployment'  # Para coleta centralizada (padrão)
+    type: 'daemonset'   # Para coleta por node (logs de host, node metrics, etc.)
 
     # 🔥 Configurações para DaemonSet (usando estrutura oficial do chart)
     # Quando controller.type = "daemonset", estas configurações são aplicadas:
