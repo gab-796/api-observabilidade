@@ -254,10 +254,12 @@ alloy:
   replicaCount: 1
   stabilityLevel: "public-preview" # Permite usar o pyroscope.receive_http
   
-  # Tipo de deployment: "deployment" ou "daemonset"
-  # - deployment: Para coleta centralizada (padrão)
-  # - daemonset: Para coleta por node (logs de host, node metrics, etc.)
-  deploymentType: "deployment"
+  # Controller configuration (seguindo padrão oficial do Grafana Alloy)
+  controller:
+    # Type of controller to use for deploying Grafana Alloy in the cluster.
+    # Must be one of 'daemonset', 'deployment', or 'statefulset'.
+    type: 'deployment'  # Para coleta centralizada (padrão)
+    # type: 'daemonset'   # Para coleta por node (logs de host, node metrics, etc.)
 
   # Configurações específicas para DaemonSet
   daemonset:

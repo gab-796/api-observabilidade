@@ -251,7 +251,7 @@ data:
       }
     }
 ---
-{{- if eq .Values.alloy.deploymentType "daemonset" }}
+{{- if eq .Values.alloy.controller.type "daemonset" }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -263,6 +263,24 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.alloy.name }}
+  template:
+{{- else if eq .Values.alloy.controller.type "statefulset" }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.alloy.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.alloy.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.alloy.replicaCount }}
+  serviceName: {{ .Values.alloy.name }}
   selector:
     matchLabels:
       app: {{ .Values.alloy.name }}
@@ -293,7 +311,7 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ .Values.alloy.name }}
-      {{- if eq .Values.alloy.deploymentType "daemonset" }}
+      {{- if eq .Values.alloy.controller.type "daemonset" }}
       # Configurações específicas para DaemonSet
       hostNetwork: {{ .Values.alloy.daemonset.hostNetwork | default false }}
       hostPID: {{ .Values.alloy.daemonset.hostPID | default false }}
@@ -329,7 +347,7 @@ spec:
             - name: alloy-config
               mountPath: /etc/alloy
               readOnly: true
-            {{- if eq .Values.alloy.deploymentType "daemonset" }}
+            {{- if eq .Values.alloy.controller.type "daemonset" }}
             # Volume mounts específicos para DaemonSet (coleta de métricas de host)
             {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
             - name: proc
