@@ -150,6 +150,7 @@ data:
 
     loki.source.journal "node_logs" {
       path       = "/var/log/journal" // Requer o volume hostPath
+      journal_path = "/run/log/journal"
       forward_to = [loki.relabel.node_logs.receiver]
       labels     = {
         "job" = "integrations/node-journal",
@@ -448,7 +449,6 @@ spec:
               readOnly: true
             {{- if eq .Values.alloy.controller.type "daemonset" }}
             # 🔥 Volume mounts CRÍTICOS para coleta de logs e métricas de TODOS os nodes
-            
             # Logs de sistema e containers
             - name: varlog
               mountPath: /var/log
@@ -459,7 +459,12 @@ spec:
             - name: varlogpods
               mountPath: /var/log/pods
               readOnly: true
-            
+            - name: runlogjournal
+              mountPath: /run/log/journal
+              readOnly: true
+            - name: varlogjournal
+              mountPath: /var/log/journal
+              readOnly: true
             # Métricas de sistema (opcionais)
             {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
             - name: proc
@@ -529,6 +534,12 @@ spec:
         - name: varlogpods
           hostPath:
             path: /var/log/pods
+        - name: runlogjournal
+          hostPath:
+            path: /run/log/journal
+        - name: varlogjournal
+          hostPath:
+            path: /var/log/journal
 
         # Volumes de host para coleta de métricas de sistema (opcionais)
         {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
