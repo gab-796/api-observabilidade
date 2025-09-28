@@ -348,7 +348,20 @@ spec:
               mountPath: /etc/alloy
               readOnly: true
             {{- if eq .Values.alloy.controller.type "daemonset" }}
-            # Volume mounts específicos para DaemonSet (coleta de métricas de host)
+            # 🔥 Volume mounts CRÍTICOS para coleta de logs e métricas de TODOS os nodes
+            
+            # Logs de sistema e containers
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            
+            # Métricas de sistema (opcionais)
             {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
             - name: proc
               mountPath: /host/proc
@@ -368,11 +381,11 @@ spec:
           resources:
             {{- toYaml .Values.alloy.resources | nindent 12 }}
           securityContext:
-            {{- if eq .Values.alloy.deploymentType "daemonset" }}
+            {{- if eq .Values.alloy.controller.type "daemonset" }}
             # SecurityContext para DaemonSet (precisa de mais permissões)
             runAsNonRoot: false
-            runAsUser: 0  # Root necessário para acessar /proc, /sys no host
-            privileged: {{ .Values.alloy.daemonset.privileged | default false }}
+            runAsUser: 0  # Root necessário para acessar /proc, /sys, /var/log no host
+            privileged: {{ .Values.alloy.controller.privileged | default true }}
             allowPrivilegeEscalation: true
             readOnlyRootFilesystem: false
             capabilities:
@@ -380,6 +393,8 @@ spec:
                 - SYS_PTRACE  # Para ler /proc
                 - SYS_ADMIN   # Para métricas de sistema
                 - DAC_READ_SEARCH  # Para ler arquivos do sistema
+                - SETUID      # Para mudanças de usuário
+                - SETGID      # Para mudanças de grupo
               drop:
                 - NET_RAW
             {{- else }}
@@ -393,7 +408,7 @@ spec:
             {{- end }}
       volumes:
         - name: alloy-storage
-          {{- if eq .Values.alloy.deploymentType "daemonset" }}
+          {{- if eq .Values.alloy.controller.type "daemonset" }}
           hostPath:
             path: /var/lib/alloy/data
             type: DirectoryOrCreate
@@ -403,8 +418,20 @@ spec:
         - name: alloy-config
           configMap:
             name: {{ .Values.alloy.name }}-config
-        {{- if eq .Values.alloy.deploymentType "daemonset" }}
-        # Volumes de host para coleta de métricas de sistema
+        {{- if eq .Values.alloy.controller.type "daemonset" }}
+        
+        # 🔥 VOLUMES CRÍTICOS para coleta de logs de TODOS os nodes
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+            
+        # Volumes de host para coleta de métricas de sistema (opcionais)
         {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
         - name: proc
           hostPath:

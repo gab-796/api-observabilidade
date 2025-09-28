@@ -221,6 +221,7 @@ alloy:
     # Configurações de rede e sistema para acesso completo ao host
     hostNetwork: true     # CRITICAL: Acesso à rede do host para métricas
     hostPID: true        # CRITICAL: Acesso aos processos do host
+    privileged: true     # CRITICAL: Acesso completo para logs de sistema
     dnsPolicy: "ClusterFirstWithHostNet"  # DNS policy para hostNetwork
 
     # Node selector para controlar onde o DaemonSet roda
