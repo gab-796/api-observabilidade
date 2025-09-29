@@ -148,28 +148,18 @@ data:
     //   forward_to = [prometheus.remote_write.mimir.receiver]
     // }
 
-    loki.source.journal "node_logs" {
-      path       = "/var/log/journal" // Requer o volume hostPath
-      journal_path = "/run/log/journal"
+    // Coletar logs do systemd journal (adiciona automaticamente job="loki.source.journal.integrations/node-journal")
+    loki.source.journal "integrations/node-journal" {
       forward_to = [loki.relabel.node_logs.receiver]
       labels     = {
-        "job" = "integrations/node-journal",
+        cluster = env("CLUSTER_NAME"),
+        node    = env("NODE_NAME"),
       }
     }
 
     // Processamento dos logs de journal/systemd
     loki.relabel "node_logs" {
       forward_to = [loki.write.loki.receiver]
-
-      rule {
-        target_label = "cluster"
-        replacement  = env("CLUSTER_NAME")
-      }
-
-      rule {
-        target_label = "node"
-        replacement  = env("NODE_NAME")
-      }
 
       rule {
         source_labels = ["__journal__hostname"]
