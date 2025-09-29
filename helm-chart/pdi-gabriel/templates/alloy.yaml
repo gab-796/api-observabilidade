@@ -85,15 +85,15 @@ rules:
     resources:
       - poddisruptionbudgets
     verbs: ["get", "list", "watch"]
-  
+
   # Coordination resources (para leader election se necessário)
   - apiGroups: ["coordination.k8s.io"]
     resources:
       - leases
     verbs: ["get", "list", "watch"]
-  
+
   # Metrics and monitoring endpoints
-  - nonResourceURLs: 
+  - nonResourceURLs:
       - "/metrics"
       - "/metrics/cadvisor"
       - "/metrics/resource"
@@ -129,7 +129,7 @@ data:
       format = "{{ .Values.alloy.config.logging.format }}"
     }
 
-    {{- if eq .Values.alloy.deploymentType "daemonset" }}
+    {{- if eq .Values.alloy.controller.type "daemonset" }}
     // ========================================
     // NODE EXPORTER CONFIGURATION (DaemonSet)
     // ========================================
