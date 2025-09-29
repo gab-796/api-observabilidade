@@ -148,37 +148,37 @@ data:
     //   forward_to = [prometheus.remote_write.mimir.receiver]
     // }
 
-    // Coletar logs do systemd journal (adiciona automaticamente job="loki.source.journal.node_journal")
-    loki.source.journal "node_journal" {
-      forward_to = [loki.relabel.node_logs.receiver]
-      labels     = {
-        job     = "integrations/node-journal",
-        cluster = env("CLUSTER_NAME"),
-        node    = env("NODE_NAME"),
-      }
-    }
+    // 🚫 TEMPORARIAMENTE DESABILITADO: systemd journal não disponível em Kind
+    // loki.source.journal "node_journal" {
+    //   forward_to = [loki.relabel.node_logs.receiver]
+    //   labels     = {
+    //     job     = "integrations/node-journal",
+    //     cluster = env("CLUSTER_NAME"),
+    //     node    = env("NODE_NAME"),
+    //   }
+    // }
 
-    // Processamento dos logs de journal/systemd
-    loki.relabel "node_logs" {
-      forward_to = [loki.write.loki.receiver]
+    // 🚫 TEMPORARIAMENTE DESABILITADO: Processamento dos logs de journal/systemd
+    // loki.relabel "node_logs" {
+    //   forward_to = [loki.write.loki.receiver]
+    //
+    //   rule {
+    //     source_labels = ["__journal__hostname"]
+    //     target_label  = "hostname"
+    //   }
+    //
+    //   rule {
+    //     source_labels = ["__journal__systemd_unit"]
+    //     target_label  = "unit"
+    //   }
+    //
+    //   rule {
+    //     source_labels = ["__journal_priority_keyword"]
+    //     target_label  = "level"
+    //   }
+    // }
 
-      rule {
-        source_labels = ["__journal__hostname"]
-        target_label  = "hostname"
-      }
-
-      rule {
-        source_labels = ["__journal__systemd_unit"]
-        target_label  = "unit"
-      }
-
-      rule {
-        source_labels = ["__journal_priority_keyword"]
-        target_label  = "level"
-      }
-    }
-
-    // ⚠️ ALTERNATIVA: Logs de sistema via arquivos (mais compatível com Kind/Docker)
+    // 🎯 PRINCIPAL: Logs de sistema via arquivos (compatível com Kind/Docker)
     loki.source.file "system_logs" {
       targets = [
         {__path__ = "/var/log/syslog", job = "system/syslog"},
