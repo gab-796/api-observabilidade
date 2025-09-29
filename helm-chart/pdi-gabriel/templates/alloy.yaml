@@ -450,12 +450,13 @@ spec:
             - name: varlogpods
               mountPath: /var/log/pods
               readOnly: true
-            - name: runlogjournal
-              mountPath: /run/log/journal
-              readOnly: true
-            - name: varlogjournal
-              mountPath: /var/log/journal
-              readOnly: true
+            # 🚫 DESABILITADO: Journal mounts (não usado em Kind)
+            # - name: runlogjournal
+            #   mountPath: /run/log/journal
+            #   readOnly: true
+            # - name: varlogjournal
+            #   mountPath: /var/log/journal
+            #   readOnly: true
             # Métricas de sistema (opcionais)
             {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
             - name: proc
@@ -525,12 +526,13 @@ spec:
         - name: varlogpods
           hostPath:
             path: /var/log/pods
-        - name: runlogjournal
-          hostPath:
-            path: /run/log/journal
-        - name: varlogjournal
-          hostPath:
-            path: /var/log/journal
+        # 🚫 DESABILITADO: Journal volumes (não usado em Kind)
+        # - name: runlogjournal
+        #   hostPath:
+        #     path: /run/log/journal
+        # - name: varlogjournal
+        #   hostPath:
+        #     path: /var/log/journal
 
         # Volumes de host para coleta de métricas de sistema (opcionais)
         {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
