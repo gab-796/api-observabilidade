@@ -148,10 +148,11 @@ data:
     //   forward_to = [prometheus.remote_write.mimir.receiver]
     // }
 
-    // Coletar logs do systemd journal (adiciona automaticamente job="loki.source.journal.integrations/node-journal")
-    loki.source.journal "integrations/node-journal" {
+    // Coletar logs do systemd journal (adiciona automaticamente job="loki.source.journal.node_journal")
+    loki.source.journal "node_journal" {
       forward_to = [loki.relabel.node_logs.receiver]
       labels     = {
+        job     = "integrations/node-journal",
         cluster = env("CLUSTER_NAME"),
         node    = env("NODE_NAME"),
       }
