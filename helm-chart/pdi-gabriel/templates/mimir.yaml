@@ -91,6 +91,8 @@ spec:
           ports:
             - containerPort: {{ .Values.mimir.config.remoteWritePort }}
               name: http
+            - containerPort: {{ .Values.mimir.config.internalMetricsPort }}
+              name: metrics
             - containerPort: {{ .Values.mimir.ports.grpc }}
               name: grpc
             - containerPort: 7946

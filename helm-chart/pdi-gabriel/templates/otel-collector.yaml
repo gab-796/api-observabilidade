@@ -30,7 +30,7 @@ data:
             {{- if .Values.otelCollector.config.prometheus.scrapeMimir }}
             - job_name: 'mimir-metrics'
               static_configs:
-                - targets: ['{{ .Values.mimir.name }}:{{ .Values.mimir.config.internalMetricsPort | default 9009 }}']
+                - targets: ['{{ .Values.mimir.name }}:{{ .Values.mimir.config.internalMetricsPort }}']
               scrape_interval: {{ .Values.otelCollector.config.prometheus.mimirScrapeInterval | default "30s" }}
               metrics_path: /metrics
             {{- end }}
