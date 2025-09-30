@@ -31,8 +31,31 @@ data:
             - job_name: 'mimir-metrics'
               scheme: http
               scrape_timeout: 10s
-              static_configs:
-                - targets: ['{{ .Values.mimir.name }}.{{ .Values.global.namespace }}.svc:{{ .Values.mimir.config.internalMetricsPort }}']
+              kubernetes_sd_configs:
+                - role: endpoints
+                  namespaces:
+                    names:
+                      - {{ .Values.global.namespace }}
+              relabel_configs:
+                # Mantém apenas o Service do Mimir
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: ^{{ .Values.mimir.name }}$
+                # Mantém apenas a porta http (8080) do Service
+                - source_labels: [__meta_kubernetes_endpoint_port_name]
+                  action: keep
+                  regex: ^http$
+                # Enriquecimento com labels úteis
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: kube_namespace
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: kube_pod
+                - source_labels: [__meta_kubernetes_service_name]
+                  target_label: kube_service
+                - source_labels: [__meta_kubernetes_pod_controller_kind]
+                  target_label: kube_workload_kind
+                - source_labels: [__meta_kubernetes_pod_controller_name]
+                  target_label: kube_workload_name
               scrape_interval: {{ .Values.otelCollector.config.prometheus.mimirScrapeInterval | default "30s" }}
               metrics_path: /metrics
             {{- end }}
