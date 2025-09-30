@@ -45,10 +45,10 @@ data:
                     names: {{ toYaml .Values.otelCollector.config.prometheus.kubeStateMetrics.namespaces | nindent 22 }}
                   {{- end }}
               relabel_configs:
-                # Apenas serviços com nome contendo kube-state-metrics
+                # Mantém apenas o Service exato do kube-state-metrics
                 - source_labels: [__meta_kubernetes_service_name]
                   action: keep
-                  regex: .*kube-state-metrics.*
+                  regex: ^ksm-kube-state-metrics$
 
                 # Usar porta de métricas (geralmente 8080)
                 - source_labels: [__address__, __meta_kubernetes_service_port_number]
