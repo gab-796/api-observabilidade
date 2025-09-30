@@ -84,7 +84,7 @@ data:
 
       # Exporter para métricas (Mimir)
       prometheusremotewrite:
-        endpoint: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort | default 9009 }}/api/v1/push
+        endpoint: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort }}/api/v1/push
         timeout: 30s
         retry_on_failure:
           enabled: true
@@ -107,6 +107,7 @@ data:
           exporters: [otlp]
         metrics:
           receivers: [prometheus]
+          processors: [batch]
           exporters: [prometheusremotewrite]
 ---
 {{- if .Values.otelCollector.config.prometheus.scrapeKubeStateMetrics }}

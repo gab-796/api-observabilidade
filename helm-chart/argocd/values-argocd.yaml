@@ -260,7 +260,9 @@ alloy:
       sys:
         enabled: true    # /sys - Informações de hardware
       rootfs:
-        enabled: true    # / - Filesystem metrics# ========================================
+        enabled: true    # / - Filesystem metrics
+
+# ========================================
 # OTEL COLLECTOR - KUBE STATE METRICS
 # ========================================
 otelCollector:
@@ -268,8 +270,8 @@ otelCollector:
   config:
     prometheus:
       scrapeKubeStateMetrics: true  # 🔥 HABILITA COLETA DO KUBE-STATE-METRICS
-      scrapeMimir: true            # 🔥 HABILITA SCRAPE DAS MÉTRICAS DO MIMIR
-      mimirScrapeInterval: 30s     # Intervalo para scrape do Mimir
+      scrapeMimir: true               # 🔥 HABILITA SCRAPE DAS MÉTRICAS DO MIMIR
+      mimirScrapeInterval: 30s        # Intervalo para scrape do Mimir
       kubeStateMetrics:
         namespaces: ["ksm"]  # 🎯 Namespace onde o kube-state-metrics está instalado
 
