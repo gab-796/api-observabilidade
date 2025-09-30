@@ -477,8 +477,8 @@ mimir:
 
   config:
     multitenancyEnabled: false
-    internalMetricsPort: 9009
-    remoteWritePort: 9009
+    internalMetricsPort: 8080  # Porta para métricas internas (/metrics)
+    remoteWritePort: 9009      # Porta para receber métricas (/api/v1/push)
     server:
       logLevel: warn
     storage:

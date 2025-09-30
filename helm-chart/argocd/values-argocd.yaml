@@ -114,6 +114,9 @@ loki:
 # Mimir com persistência
 mimir:
   enabled: true
+  config:
+    internalMetricsPort: 8080  # Porta para métricas internas (/metrics)
+    remoteWritePort: 9009      # Porta para receber métricas (/api/v1/push)
   resources:
     limits:
       memory: "4Gi"
@@ -265,6 +268,8 @@ otelCollector:
   config:
     prometheus:
       scrapeKubeStateMetrics: true  # 🔥 HABILITA COLETA DO KUBE-STATE-METRICS
+      scrapeMimir: true            # 🔥 HABILITA SCRAPE DAS MÉTRICAS DO MIMIR
+      mimirScrapeInterval: 30s     # Intervalo para scrape do Mimir
       kubeStateMetrics:
         namespaces: ["ksm"]  # 🎯 Namespace onde o kube-state-metrics está instalado
 

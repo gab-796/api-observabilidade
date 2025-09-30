@@ -70,7 +70,10 @@ data:
             {{- end }}
 
     processors:
-      batch: {}
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
 
     exporters:
       # Exporter para traces (Tempo)
@@ -82,6 +85,12 @@ data:
       # Exporter para métricas (Mimir)
       prometheusremotewrite:
         endpoint: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort | default 9009 }}/api/v1/push
+        timeout: 30s
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
 
     extensions:
       health_check: {}

@@ -13,6 +13,11 @@ data:
       grpc_listen_port: {{ .Values.mimir.ports.grpc }}
       log_level: {{ .Values.mimir.config.server.logLevel }}
 
+    # Configuração para servir métricas internas em porta separada
+    internal_server:
+      enable: true
+      http_listen_port: {{ .Values.mimir.config.internalMetricsPort }}
+
     distributor:
       ring:
         kvstore:
@@ -146,6 +151,10 @@ spec:
       protocol: TCP
       port: {{ .Values.mimir.config.remoteWritePort }}
       targetPort: {{ .Values.mimir.config.remoteWritePort }}
+    - name: metrics
+      protocol: TCP
+      port: {{ .Values.mimir.config.internalMetricsPort }}
+      targetPort: {{ .Values.mimir.config.internalMetricsPort }}
     - name: grpc
       protocol: TCP
       port: {{ .Values.mimir.ports.grpc }}
