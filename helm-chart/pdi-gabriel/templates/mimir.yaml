@@ -9,14 +9,13 @@ data:
     multitenancy_enabled: {{ .Values.mimir.config.multitenancyEnabled }}
 
     server:
-      http_listen_port: {{ .Values.mimir.config.remoteWritePort }}
+      http_listen_port: {{ .Values.mimir.config.internalMetricsPort }}
       grpc_listen_port: {{ .Values.mimir.ports.grpc }}
       log_level: {{ .Values.mimir.config.server.logLevel }}
-
-    # Configuração para servir métricas internas em porta separada
-    internal_server:
-      enable: true
-      http_listen_port: {{ .Values.mimir.config.internalMetricsPort }}
+    
+    # Configuração da API para receber métricas
+    api:
+      prometheus_http_prefix: /prometheus
 
     distributor:
       ring:
@@ -89,10 +88,8 @@ spec:
             - -config.file=/etc/mimir/mimir.yaml
             - -log.level={{ .Values.mimir.config.server.logLevel }}
           ports:
-            - containerPort: {{ .Values.mimir.config.remoteWritePort }}
-              name: http
             - containerPort: {{ .Values.mimir.config.internalMetricsPort }}
-              name: metrics
+              name: http
             - containerPort: {{ .Values.mimir.ports.grpc }}
               name: grpc
             - containerPort: 7946
@@ -118,12 +115,12 @@ spec:
           readinessProbe:
             httpGet:
               path: /ready
-              port: {{ .Values.mimir.config.remoteWritePort }}
+              port: {{ .Values.mimir.config.internalMetricsPort }}
             {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /ready
-              port: {{ .Values.mimir.config.remoteWritePort }}
+              port: {{ .Values.mimir.config.internalMetricsPort }}
             {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
           {{- end }}
       volumes:
@@ -151,11 +148,11 @@ spec:
   ports:
     - name: http
       protocol: TCP
-      port: {{ .Values.mimir.config.remoteWritePort }}
-      targetPort: {{ .Values.mimir.config.remoteWritePort }}
-    - name: metrics
-      protocol: TCP
       port: {{ .Values.mimir.config.internalMetricsPort }}
+      targetPort: {{ .Values.mimir.config.internalMetricsPort }}
+    - name: remote-write
+      protocol: TCP
+      port: {{ .Values.mimir.config.remoteWritePort }}
       targetPort: {{ .Values.mimir.config.internalMetricsPort }}
     - name: grpc
       protocol: TCP
