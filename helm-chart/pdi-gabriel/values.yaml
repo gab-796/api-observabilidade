@@ -354,7 +354,7 @@ otelCollector:
 
   config:
     logging:
-      level: warn
+      level: info
 
     prometheus:
       scrapeInterval: 15s
