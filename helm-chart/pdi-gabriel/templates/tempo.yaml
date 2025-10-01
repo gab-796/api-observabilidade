@@ -106,9 +106,9 @@ spec:
         {{- end }}
     spec:
       securityContext:
-        runAsUser: 10001
-        runAsGroup: 10001
-        fsGroup: 10001
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
       containers:
         - name: {{ .Values.tempo.name }}
           image: {{ .Values.tempo.image.repository }}:{{ .Values.tempo.image.tag }}
@@ -152,8 +152,6 @@ spec:
             path: /tmp/tempo-data
             type: DirectoryOrCreate
         - name: tempo-config
-          configMap:
-            name: {{ .Values.tempo.name }}-config
 ---
 apiVersion: v1
 kind: Service
