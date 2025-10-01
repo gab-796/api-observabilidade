@@ -7,10 +7,15 @@ metadata:
 data:
   tempo.yaml: |
     auth_enabled: false
+    
     server:
       http_listen_port: {{ .Values.tempo.ports.http }}
       log_level: {{ .Values.tempo.config.server.logLevel }}
 
+    # Configuração de multitenancy para single-tenant
+    multitenancy_enabled: false
+
+    # Configuração do distributor
     distributor:
       receivers:
         otlp:
@@ -20,11 +25,36 @@ data:
             http:
               endpoint: 0.0.0.0:{{ .Values.tempo.ports.otlpHttp }}
 
+    # Configuração do ingester  
     ingester:
       trace_idle_period: 10s
       max_block_bytes: 5242880
       max_block_duration: 5m
 
+    # Configuração do compactor
+    compactor:
+      compaction:
+        block_retention: 24h
+
+    # Configuração do metrics-generator (resolve "empty ring")
+    metrics_generator:
+      registry:
+        external_labels:
+          source: tempo
+          cluster: {{ .Values.global.namespace }}
+      storage:
+        path: {{ .Values.tempo.config.storage.trace.local.path }}/generator/wal
+        remote_write:
+          - url: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort }}/api/v1/push
+            send_exemplars: true
+
+    # Configuração do memberlist (para cluster ring)  
+    memberlist:
+      node_name: tempo-0
+      bind_port: 7946
+      join_members: []
+
+    # Configuração de storage
     storage:
       trace:
         backend: {{ .Values.tempo.config.storage.trace.backend }}
@@ -33,12 +63,24 @@ data:
         wal:
           path: {{ .Values.tempo.config.storage.trace.local.path }}/wal
 
+    # Configuração do query-frontend
     query_frontend:
       search:
         duration_slo: 5s
         throughput_bytes_slo: 1.073741824e+09
       trace_by_id:
         duration_slo: 5s
+
+    # Configuração do querier
+    querier:
+      frontend_worker:
+        frontend_address: {{ .Values.tempo.name }}:{{ .Values.tempo.ports.grpc }}
+
+    # Configuração global de limites
+    overrides:
+      defaults:
+        metrics_generator:
+          processors: [service-graphs, span-metrics]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -82,6 +124,8 @@ spec:
               name: otlp-http
             - containerPort: 9095
               name: grpc
+            - containerPort: 7946
+              name: memberlist
           volumeMounts:
             - name: tempo-storage
               mountPath: /var/tempo
@@ -104,7 +148,9 @@ spec:
           {{- end }}
       volumes:
         - name: tempo-storage
-          emptyDir: {}
+          hostPath:
+            path: /tmp/tempo-data
+            type: DirectoryOrCreate
         - name: tempo-config
           configMap:
             name: {{ .Values.tempo.name }}-config
@@ -137,6 +183,10 @@ spec:
       protocol: TCP
       port: 9095
       targetPort: 9095
+    - name: memberlist
+      protocol: TCP
+      port: 7946
+      targetPort: 7946
   selector:
     app: {{ .Values.tempo.name }}
   type: {{ .Values.services.type }}
