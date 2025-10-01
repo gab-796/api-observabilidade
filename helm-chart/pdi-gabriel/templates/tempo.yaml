@@ -71,11 +71,6 @@ data:
       trace_by_id:
         duration_slo: 5s
 
-    # Configuração do querier
-    querier:
-      frontend_worker:
-        frontend_address: {{ .Values.tempo.name }}:{{ .Values.tempo.ports.grpc }}
-
     # Configuração global de limites
     overrides:
       defaults:
