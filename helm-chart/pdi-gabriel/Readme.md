@@ -8,30 +8,32 @@ Todos os yaml estão na pasta template de forma que o chart sobe todos eles como
 ## V1
 Parametrizar os templates para que os valores a serem considerados no values.yaml é que sejam levados em conta.
 
-## Coleta de logs dos NOdes
+## Coleta de logs dos Nodes
 Não é possível pro Alloy capturar esses logs dos nodes do Kind. Eu precisaria rodar um Alloy no meu host, pra assim pegar os logs do container que o Kind usa como nodes…
 
-Porque no Kind esses processos rodam no container do node, e não dentro de pods.
+Porque no Kind, os containers não são máquinas reais, mas containers Docker. eles não tem um SO que gera logs de sistema como syslog e journald.
 
-DaemonSets só veem o filesystem/mounts expostos dentro do node Kubernetes, não os logs do container Docker que está representando o node.
+Os arquivos ficariam em /var/log ou acessíveis via journald, mas como não temos SO, apenas containers, nada disso é gerado. Os únicos logs relevantes são dos processos do k8s, que ficam dentro do container Docker.
+
+O acesso dos logs do kubelet e containerd se dá via `docker logs <nome-do-node>`
 
 
 ## Coleta de Métricas no Otel Collector
 
-Métricas do CAdvisor
+### Métricas do CAdvisor
 job_name: 'cadvisor'
 - Memória usada por todos os containers
 Captura direto do CAdvisor, que mora no Kubelet, na porta 10250 via HTTPS,  métricas detalhadas de uso de CPU, memória, disco e rede para cada contêiner em execução, como container_memory_usage_bytes
 São métricas que iniciam com container_
 
-Métricas do Kube State Metrics
+### Métricas do Kube State Metrics
 job_name: 'kube-state-metrics'
 Gera métricas de estado dos objetos k8s como kube_deployment_spec_replicas e kube_node_status_condition
 
-Métricas do proprio Mimir
+### Métricas do proprio Mimir
 job_name 'mimir-metrics' no otel collector
 
-Métricas da aplicação api-app-go
+### Métricas da aplicação api-app-go
 job_name: 'inventory-app'
 
 ## Dependências
@@ -42,4 +44,4 @@ job_name: 'inventory-app'
    2. `helm upgrade my-eventrouter krateo/eventrouter --namespace keda -f values.yaml`
 
 ## Tempo
-Afim de parar com os erros de WAL ao desligar o cluster Kind, tive de trocar de EmptyDir pra hostPath.
+Estamos usando o init container para deletar todos os arquivos que ficam no WAL e nos blocks, afim de garantir que nada corrompido fique entre cada reinstalação que façamos no decorrer dos testes.

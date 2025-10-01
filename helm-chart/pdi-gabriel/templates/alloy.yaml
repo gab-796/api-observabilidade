@@ -34,7 +34,7 @@ rules:
       - persistentvolumeclaims
       - componentstatuses
     verbs: ["get", "list", "watch"]
-  
+
   # Apps resources
   - apiGroups: ["apps"]
     resources:
@@ -43,34 +43,34 @@ rules:
       - replicasets
       - statefulsets
     verbs: ["get", "list", "watch"]
-  
+
   # Networking resources
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources:
       - ingresses
       - networkpolicies
     verbs: ["get", "list", "watch"]
-  
+
   # Autoscaling resources
   - apiGroups: ["autoscaling"]
     resources:
       - horizontalpodautoscalers
     verbs: ["get", "list", "watch"]
-  
+
   # Batch resources
   - apiGroups: ["batch"]
     resources:
       - jobs
       - cronjobs
     verbs: ["get", "list", "watch"]
-  
+
   # Storage resources
   - apiGroups: ["storage.k8s.io"]
     resources:
       - storageclasses
       - volumeattachments
     verbs: ["get", "list", "watch"]
-  
+
   # RBAC resources (para monitorar permissões)
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources:
@@ -79,7 +79,7 @@ rules:
       - clusterroles
       - clusterrolebindings
     verbs: ["get", "list", "watch"]
-  
+
   # Policy resources
   - apiGroups: ["policy"]
     resources:
@@ -387,7 +387,7 @@ spec:
     spec:
       serviceAccountName: {{ .Values.alloy.name }}
       {{- if eq .Values.alloy.controller.type "daemonset" }}
-      # 🔥 Configurações específicas para DaemonSet (seguindo estrutura oficial Grafana Alloy)
+      # 🔥 Configurações específicas para DaemonSet
       hostNetwork: {{ .Values.alloy.controller.hostNetwork | default false }}
       hostPID: {{ .Values.alloy.controller.hostPID | default false }}
       dnsPolicy: {{ .Values.alloy.controller.dnsPolicy | default "ClusterFirst" }}
