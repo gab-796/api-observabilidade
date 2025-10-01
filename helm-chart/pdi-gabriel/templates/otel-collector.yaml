@@ -176,7 +176,10 @@ rules:
     resources:
       - services
       - endpoints
+  - endpointslices
       - nodes
+  - nodes/proxy
+  - nodes/metrics
       - pods
     verbs: ["get", "list", "watch"]
 ---
