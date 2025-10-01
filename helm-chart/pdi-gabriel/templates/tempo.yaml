@@ -152,6 +152,8 @@ spec:
             path: /tmp/tempo-data
             type: DirectoryOrCreate
         - name: tempo-config
+          configMap:
+            name: {{ .Values.tempo.name }}-config
 ---
 apiVersion: v1
 kind: Service
