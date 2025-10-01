@@ -7,7 +7,7 @@ metadata:
 data:
   tempo.yaml: |
     auth_enabled: false
-    
+
     server:
       http_listen_port: {{ .Values.tempo.ports.http }}
       log_level: {{ .Values.tempo.config.server.logLevel }}
@@ -25,7 +25,7 @@ data:
             http:
               endpoint: 0.0.0.0:{{ .Values.tempo.ports.otlpHttp }}
 
-    # Configuração do ingester  
+    # Configuração do ingester
     ingester:
       trace_idle_period: 10s
       max_block_bytes: 5242880
@@ -48,7 +48,7 @@ data:
           - url: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort }}/api/v1/push
             send_exemplars: true
 
-    # Configuração do memberlist (para cluster ring)  
+    # Configuração do memberlist (para cluster ring)
     memberlist:
       node_name: tempo-0
       bind_port: 7946
@@ -71,11 +71,9 @@ data:
       trace_by_id:
         duration_slo: 5s
 
-    # Configuração global de limites
+    # Configuração global de limites (metrics-generator desabilitado)
     overrides:
-      defaults:
-        metrics_generator:
-          processors: [service-graphs, span-metrics]
+      defaults: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -104,6 +102,22 @@ spec:
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
+      initContainers:
+        - name: init-tempo-storage
+          image: busybox:1.36
+          command: 
+            - sh
+            - -c
+            - |
+              echo "Limpando WAL corrompido..."
+              rm -rf /var/tempo/wal* /var/tempo/generator* /var/tempo/blocks*
+              mkdir -p /var/tempo
+              echo "WAL limpo com sucesso"
+          volumeMounts:
+            - name: tempo-storage
+              mountPath: /var/tempo
+          securityContext:
+            runAsUser: 0
       containers:
         - name: {{ .Values.tempo.name }}
           image: {{ .Values.tempo.image.repository }}:{{ .Values.tempo.image.tag }}
@@ -143,9 +157,7 @@ spec:
           {{- end }}
       volumes:
         - name: tempo-storage
-          hostPath:
-            path: /tmp/tempo-data
-            type: DirectoryOrCreate
+          emptyDir: {}
         - name: tempo-config
           configMap:
             name: {{ .Values.tempo.name }}-config
