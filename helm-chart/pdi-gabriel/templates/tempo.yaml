@@ -137,12 +137,12 @@ spec:
           {{- if .Values.monitoring.healthChecks.enabled }}
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /status
               port: {{ .Values.tempo.ports.http }}
             {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
           livenessProbe:
             httpGet:
-              path: /ready
+              path: /status
               port: {{ .Values.tempo.ports.http }}
             {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
           {{- end }}
