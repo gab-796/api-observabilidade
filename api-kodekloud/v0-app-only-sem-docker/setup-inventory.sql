@@ -15,4 +15,4 @@ INSERT INTO products (name, price, quantity) VALUES
     ('Monitor', 1200.00, 8),
     ('Cadeira Gamer', 800.00, 5);
 
-// Cria a tabela products no banco de dados inventory e insere 5 registros.
+-- Cria a tabela products no banco de dados inventory e insere 5 registros.

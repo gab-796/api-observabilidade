@@ -1,0 +1,141 @@
+# Vault - All-in-One Configuration
+# Este arquivo consolida todos os recursos do Vault em um único manifesto
+# ATENÇÃO: Para simplificar o lab, Vault está no mesmo namespace da API
+# ⚠️ NÃO RECOMENDADO PARA PRODUÇÃO - Vault deve ter namespace separado!
+#
+# Usando External Secrets Operator - Vault Agent Injector removido (incompatível com scratch)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-app-go
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+  namespace: api-app-go
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-server-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: api-app-go
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config
+  namespace: api-app-go
+data:
+  vault.hcl: |
+    ui = true
+    
+    listener "tcp" {
+      address = "0.0.0.0:8200"
+      tls_disable = 1
+    }
+    
+    storage "file" {
+      path = "/vault/data"
+    }
+    
+    disable_mlock = true
+    
+    # Configurar logs em JSON
+    log_format = "json"
+    log_level = "info"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: api-app-go
+  labels:
+    app: vault
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+      protocol: TCP
+    - name: internal
+      port: 8201
+      targetPort: 8201
+      protocol: TCP
+  selector:
+    app: vault
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  namespace: api-app-go
+  labels:
+    app: vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      serviceAccountName: vault
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.15.0
+          ports:
+            - containerPort: 8200
+              name: http
+            - containerPort: 8201
+              name: internal
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+          env:
+            - name: VAULT_ADDR
+              value: "http://127.0.0.1:8200"
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              value: "root"
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: "0.0.0.0:8200"
+            - name: VAULT_LOG_FORMAT
+              value: "json"
+            - name: VAULT_LOG_LEVEL
+              value: "info"
+          args:
+            - server
+            - -dev
+            - -dev-root-token-id=root
+            - -dev-listen-address=0.0.0.0:8200
+          securityContext:
+            capabilities:
+              add:
+                - IPC_LOCK
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health
+              port: 8200
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health
+              port: 8200
+            initialDelaySeconds: 10
+            periodSeconds: 10

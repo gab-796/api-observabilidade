@@ -1,0 +1,99 @@
+# ConfigMap com variáveis de ambiente do MySQL
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-config
+  namespace: api-app-go
+data:
+  DB_USER: root
+  DB_NAME: inventory
+  DB_HOST: mysql
+  MYSQL_DATABASE: inventory
+---
+# Cria a tabela inicial do MySQL via ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: init-db-configmap
+  namespace: api-app-go
+data:
+  init-db.sql: |
+    CREATE DATABASE IF NOT EXISTS inventory;
+    USE inventory;
+
+    CREATE TABLE IF NOT EXISTS products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        price DECIMAL(10, 2) NOT NULL,
+        quantity INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT INTO products (name, price, quantity) VALUES
+    ('Notebook', 3500.00, 10),
+    ('Mouse', 150.00, 25),
+    ('Teclado', 200.00, 15),
+    ('Monitor', 1200.00, 8),
+    ('Cadeira Gamer', 800.00, 5);
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: api-app-go
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql # nome do svc do MySQL
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+        envFrom:
+        - configMapRef:
+            name: inventory-config  # Referencia o ConfigMap
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_ROOT_PASSWORD
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+        - name: init-db
+          mountPath: /docker-entrypoint-initdb.d # Esse Path é o padrão da imagem do mysql para scripts de inicialização.
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+      volumes:
+      - name: mysql-data
+        emptyDir: {}
+      - name: init-db
+        configMap:
+          name: init-db-configmap # Referência pra uso do configmap com as instruções iniciais da criação da tabela mysql.---
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: api-app-go
+spec:
+  selector:
+    app: mysql
+  ports:
+  - protocol: TCP
+    port: 3306
+    targetPort: 3306
+  type: ClusterIP

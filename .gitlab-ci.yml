@@ -1,0 +1,13 @@
+deploy-prod:
+  stage: deploy
+  script:
+    # 1. Buscar senhas do Vault de produção
+    - export VAULT_ADDR="https://vault.empresa.com"
+    - export VAULT_TOKEN="${VAULT_PROD_TOKEN}"
+    - export MYSQL_ROOT_PASSWORD=$(vault kv get -field=password secret/prod/mysql)
+    - export DB_PASSWORD=$(vault kv get -field=password secret/prod/app)
+    
+    # 2. Deploy com senhas reais
+    - ./deploy.sh
+  only:
+    - main

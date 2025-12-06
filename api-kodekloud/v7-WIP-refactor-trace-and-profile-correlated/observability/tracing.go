@@ -17,6 +17,15 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/uptrace/opentelemetry-go-extra/otellogrus"
 )
+/*
+A SDK da uptrace foi escolhida pela facilidade de capturar trace com log
+A Uptrace desenvolveu isso focando no backend deles.
+É mais acoplado ao modelo de tracing, não ao de logs nativos OTel.
+O ideal seria ter adotado o padrão otel, ou seja, usar esse aqui:
+"github.com/uptrace/opentelemetry-go-extra/otellogrus"
+
+*/
+
 
 // TracingManager gerencia configuração e lifecycle do OpenTelemetry
 type TracingManager struct {

@@ -1,0 +1,177 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: api-app-go
+  labels:
+    app: tempo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.6.0
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+            - -target=all
+          ports:
+            - containerPort: 3200
+              name: http
+            - containerPort: 9095
+              name: grpc-internal
+            - containerPort: 4317
+              name: otlp-grpc
+            - containerPort: 4318
+              name: otlp-http
+          env:
+            - name: TEMPO_GRPC_LISTEN_PORT
+              value: "9095" # Porta usada para os componentes do Tempo se conversarem.
+          volumeMounts:
+            - name: tempo-storage
+              mountPath: /var/tempo
+            - name: tempo-config
+              mountPath: /etc/tempo
+              readOnly: true
+          resources:
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3200
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 3
+      volumes:
+        - name: tempo-storage
+          emptyDir: {}
+        - name: tempo-config
+          configMap:
+            name: tempo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: api-app-go
+spec:
+  ports:
+    - name: http # Nome obrigatório
+      protocol: TCP
+      port: 3200
+      targetPort: 3200
+    - name: grpc # Nome obrigatório
+      protocol: TCP
+      port: 4317
+      targetPort: 4317
+  selector:
+    app: tempo
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: api-app-go
+data:
+  tempo.yaml: |
+    auth_enabled: false
+    
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9095
+      log_level: warn
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+    ingester:
+      trace_idle_period: 10s
+      max_block_bytes: 5242880
+      max_block_duration: 5m
+
+    compactor:
+      compaction:
+        block_retention: 24h
+
+    # Metrics Generator (para TraceQL metrics)
+    metrics_generator:
+      registry:
+        external_labels:
+          source: tempo
+          cluster: local
+      storage:
+        path: /var/tempo/generator/wal
+        remote_write:
+          - url: http://mimir:9009/api/v1/push
+            send_exemplars: true
+      processor:
+        service_graphs:
+          dimensions:
+            - http.method
+            - http.status_code
+          histogram_buckets: [0.1, 0.5, 1, 2, 5, 10]
+        span_metrics:
+          dimensions:
+            - http.method
+            - http.status_code
+            - service.name
+          histogram_buckets: [0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.128, 0.256, 0.512, 1.024, 2.048, 4.096, 8.192, 16.384]
+      # Configuração para modo monolítico (evita erro de empty ring)
+      ring:
+        kvstore:
+          store: inmemory
+
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/blocks
+        wal:
+          path: /var/tempo/wal
+        pool:
+          max_workers: 100
+          queue_depth: 10000
+
+    querier:
+      max_concurrent_queries: 20
+      frontend_worker:
+        frontend_address: localhost:9095
+
+    query_frontend:
+      search:
+        max_duration: 0s
+
+    overrides:
+      metrics_generator_processors: [service-graphs, span-metrics]
+      max_traces_per_user: 10000
+      max_bytes_per_trace: 50000000
+      ingestion_rate_limit_bytes: 15000000
+      ingestion_burst_size_bytes: 20000000
+
+    usage_report:
+      reporting_enabled: false

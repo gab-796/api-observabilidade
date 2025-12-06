@@ -9,23 +9,28 @@ func main() {
 		log.Fatal(err)
 	}
 	app.HandleRequests() // Registra todas as rotas HTTP.
-	app.Run(":10000") // Inicia o servidor na porta 10000. Go vai escutar em todas as interfaces de rede disponiveis na máquina(0.0.0.0)
+	err = app.Run(":10000") // Inicia o servidor na porta 10000. Go vai escutar em todas as interfaces de rede disponiveis na máquina(0.0.0.0)
+	if err != nil { // Caso tenha erro, logue esse erro, usando a biblioteca padrão do go: log.
+		log.Fatal(err)
+	}
 }
 
 /*
 0. A chama app.Initialise() conecta ao banco, cria o roteador, ou seja, inicia a aplicação.
-
 1. Ele funciona no POSTMAN tb, basta estar rodando aqui.
-
 2. Para fazer o método POST funcionar, vc deve usar o endereço essa forma : `http://localhost:10000/product``, sem incluir o barra no final.
 Isso é decorrente do uso do método StrictSlash(true) na criação do roteador.
-
 3. Executando a criação da tabela e a adição de algumas linhas nele:
 docker exec -i mysql-container mysql -u root -padmin learning < setup-inventory.sql
-
 4. O Padrão usado foi Initialise --> Register Routes --> Run
-
 5. Caso queiramos limitar a localhost, deveríamos colocar `app.Run("localhost:10000")`
+
+Fluxo de Execução:
+1. Cria instância App
+2. Inicializa conexões(DB + Router) via app.Initialise()
+3. Registra todas as rotas HTTP(app.HandleRequests())
+4. Inicia Servidor na porta 10000
+
 
 ---
 
