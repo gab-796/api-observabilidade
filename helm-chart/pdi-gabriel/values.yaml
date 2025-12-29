@@ -64,7 +64,8 @@ mysql:
     pullPolicy: IfNotPresent
 
   config:
-    rootPassword: admin
+    # rootPassword vem do Vault via External Secret (mysql-secrets)
+    # rootPassword: admin  # NÃO USAR - secret gerenciado pelo Vault
     database: inventory
     user: root
 
@@ -111,9 +112,10 @@ inventoryApp:
     prometheus:
       metricsPath: /metrics
 
-  # Secrets
-  secret:
-    dbPassword: "admin"  # Em produção, use Sealed Secrets ou External Secrets
+  # Secrets gerenciados pelo Vault via External Secrets Operator
+  # Veja: templates/external-secret.yaml
+  secret: {}
+    # dbPassword: "admin"  # NÃO USAR - secret gerenciado pelo Vault (mysql-secrets)
 
   env: {}
 
