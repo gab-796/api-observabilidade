@@ -1,3 +1,4 @@
+{{- if .Values.vault.enabled }}
 # Vault - All-in-One Configuration
 # Este arquivo consolida todos os recursos do Vault em um único manifesto
 # ATENÇÃO: Para simplificar o lab, Vault está no mesmo namespace da API
@@ -5,82 +6,48 @@
 #
 # Usando External Secrets Operator - Vault Agent Injector removido (incompatível com scratch)
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: api-app-go
----
+# ServiceAccount
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: vault
   namespace: api-app-go
 ---
+# ClusterRole (necessário para Vault auth)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vault
+rules:
+  - apiGroups: [""]
+    resources: ["serviceaccounts", "serviceaccounts/token"]
+    verbs: ["get", "create"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+---
+# ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: vault-server-binding
+  name: vault
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: system:auth-delegator
+  name: vault
 subjects:
   - kind: ServiceAccount
     name: vault
     namespace: api-app-go
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vault-config
-  namespace: api-app-go
-data:
-  vault.hcl: |
-    ui = true
-
-    listener "tcp" {
-      address = "0.0.0.0:8200"
-      tls_disable = 1
-    }
-
-    storage "file" {
-      path = "/vault/data"
-    }
-
-    disable_mlock = true
-
-    # Configurar logs em JSON
-    log_format = "json"
-    log_level = "info"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: vault
-  namespace: api-app-go
-  labels:
-    app: vault
-spec:
-  type: ClusterIP
-  ports:
-    - name: http
-      port: 8200
-      targetPort: 8200
-      protocol: TCP
-    - name: internal
-      port: 8201
-      targetPort: 8201
-      protocol: TCP
-  selector:
-    app: vault
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: vault
   namespace: api-app-go
-  labels:
-    app: vault
 spec:
   replicas: 1
   selector:
@@ -94,7 +61,7 @@ spec:
       serviceAccountName: vault
       containers:
         - name: vault
-          image: hashicorp/vault:1.15.0
+          image: "vault:1.9.0"
           ports:
             - containerPort: 8200
               name: http
@@ -139,3 +106,50 @@ spec:
               port: 8200
             initialDelaySeconds: 10
             periodSeconds: 10
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: api-app-go
+  labels:
+    app: vault
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+      protocol: TCP
+    - name: internal
+      port: 8201
+      targetPort: 8201
+      protocol: TCP
+  selector:
+    app: vault
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config
+  namespace: api-app-go
+data:
+  vault.hcl: |
+    ui = true
+
+    listener "tcp" {
+      address = "0.0.0.0:8200"
+      tls_disable = 1
+    }
+
+    storage "file" {
+      path = "/vault/data"
+    }
+
+    disable_mlock = true
+
+    log_format = "json"
+    log_level = "info"
+{{- end }}

@@ -20,17 +20,14 @@ spec:
     # Valores específicos para ArgoCD
     helm:
       valueFiles:
-        - values.yaml
-      # Override de valores, caso necessário
+        - values.yaml  # Values padrão (base)
+        - ../argocd/values-argocd.yaml  # Override para ArgoCD
+      # Override de valores mínimos (resto vem do values-argocd.yaml)
       parameters:
         - name: global.environment
           value: development
         - name: inventoryApp.image.tag
           value: v4.0
-        - name: grafana.ephemeral.enabled
-          value: "false"  # Persistir dados no ArgoCD
-        - name: grafana.persistence.enabled
-          value: "true"
 
   # Configuração do destino
   destination:
@@ -48,7 +45,7 @@ spec:
       - PrunePropagationPolicy=foreground
       - PruneLast=true          # Remove recursos na ordem correta
       - RespectIgnoreDifferences=true
-      - ApplyOutOfSyncOnly=true # Aplica apenas recursos out-of-sync
+      - ApplyOutOfSyncOnly=true # Aplica apenas  recursos out-of-sync
 
     retry:
       limit: 5
@@ -75,6 +72,10 @@ spec:
 
   # Health checks customizados para componentes específicos
   revisionHistoryLimit: 10
+
+---
+# Nota: Vault está incluído no Helm chart (templates/vault.yaml)
+# Todos os componentes são deployados juntos pelo ArgoCD
 
 ---
 # ArgoCD Project (opcional, se quiser isolar este projeto)

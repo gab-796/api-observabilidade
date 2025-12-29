@@ -99,9 +99,6 @@ vault status
 ```bash
 # Ainda dentro do pod do Vault:
 
-# Habilitar KV v2
-vault secrets enable -path=secret kv-v2
-
 # Criar secrets da aplicação
 vault kv put secret/inventory-app/database \
   MYSQL_ROOT_PASSWORD=admin \
@@ -162,40 +159,6 @@ kubectl get pods -n api-app-go
 kubectl logs -n api-app-go -l app=inventory-app -f
 ```
 
-## 7. Verificar secrets injetadas
-
-```bash
-# Exec no container da aplicação
-kubectl exec -it -n api-app-go -l app=inventory-app -c inventory-app -- sh
-
-## 6. Deploy da aplicação (ÚLTIMO PASSO)
-
-**IMPORTANTE**: A API só deve subir DEPOIS do ExternalSecret criar o mysql-secrets + MySQL rodando!
-
-```bash
-# Aplicar manifesto da API
-kubectl apply -f api-all-in-one.yaml
-
-# Verificar pods (deve ter apenas 1 container, sem sidecars!)
-kubectl get pods -n api-app-go
-
-# Ver logs da aplicação
-kubectl logs -n api-app-go -l app=inventory-app -f
-```
-
-## 7. Verificar secrets injetadas
-
-```bash
-# Ver o Kubernetes Secret criado pelo External Secrets
-kubectl get secret mysql-secrets -n api-app-go -o yaml
-
-# Decodificar os valores (base64)
-kubectl get secret mysql-secrets -n api-app-go -o jsonpath='{.data.DB_PASSWORD}' | base64 -d
-echo
-
-# Verificar que a aplicação recebeu as env vars
-kubectl exec -n api-app-go -l app=inventory-app -- env | grep -E '(DB_PASSWORD|MYSQL_ROOT_PASSWORD)'
-```
 
 ## Resumo do Fluxo Completo
 
@@ -335,3 +298,20 @@ kubectl logs -n vault -l app=vault-agent-injector
   - Configure múltiplas réplicas do Vault para HA
   - Configure auto-unseal com Cloud KMS
   - Separe Vault em namespace dedicado
+
+## ⚠️ Diferença entre LAB e PRODUÇÃO
+
+### LAB (este repositório)
+O script `deploy.sh` **cria automaticamente** as secrets no Vault para facilitar testes.
+
+### PRODUÇÃO (mundo real)
+Você deveria:
+
+1. **Vault já existe** (gerenciado por equipe de segurança)
+2. **Criar secrets MANUALMENTE** antes do deploy:
+   ```bash
+   vault kv put secret/inventory-app/database \
+     MYSQL_ROOT_PASSWORD=$(openssl rand -base64 32) \
+     DB_PASSWORD=$(openssl rand -base64 32)
+   ```
+3. **Deploy apenas da aplicação** (sem tocar no Vault)

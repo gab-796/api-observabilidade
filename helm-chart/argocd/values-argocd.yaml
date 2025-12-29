@@ -10,6 +10,16 @@ global:
   namespace: api-app-go
   environment: development
 
+# Nota: External Secrets Operator já instalado globalmente no namespace external-secrets
+# Não precisa configurar aqui
+
+# ========================================
+# VAULT CONFIGURATION
+# ========================================
+vault:
+  enabled: true  # Habilitar deploy do Vault via Helm chart
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+
 # ========================================
 # INVENTORY APPLICATION CONFIGURATION
 # ========================================
@@ -19,12 +29,12 @@ inventoryApp:
     tag: v4.0
     pullPolicy: IfNotPresent  # Mais eficiente no ArgoCD
 
-  # HPA específico para produção
+  # HPA habilitado para testes (valores reduzidos para ambiente local)
   autoscaling:
     enabled: true
-    minReplicas: 2  # Maior resiliência
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 70  # Mais conservador
+    minReplicas: 1  # Inicia com 1 pod
+    maxReplicas: 5  # Escala até 5 pods máximo
+    targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: 80
 
   resources:
@@ -32,14 +42,16 @@ inventoryApp:
       memory: "1Gi"
       cpu: "500m"
     requests:
-      memory: "512Mi"
-      cpu: "250m"
+      memory: "256Mi"
+      cpu: "100m"
 
 # ========================================
 # GRAFANA CONFIGURATION PARA ARGOCD
 # ========================================
 grafana:
   enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+  
   service:
     enabled: true          # Se o subchart verificar esta flag
     type: ClusterIP
@@ -114,6 +126,8 @@ loki:
 # Mimir com persistência
 mimir:
   enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+  
   config:
     internalMetricsPort: 8080  # Porta para métricas internas (/metrics)
     remoteWritePort: 9009      # Porta para receber métricas (/api/v1/push)
@@ -128,6 +142,8 @@ mimir:
 # Tempo com persistência
 tempo:
   enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+  
   resources:
     limits:
       memory: "2Gi"
@@ -150,6 +166,8 @@ pyroscope:
 # MySQL com persistência
 mysql:
   enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+  
   resources:
     limits:
       memory: "2Gi"
@@ -276,11 +294,11 @@ otelCollector:
         namespaces: ["ksm"]  # 🎯 Namespace onde o kube-state-metrics está instalado
 
 # ========================================
-# SECRETS EXTERNOS (PARA PRODUÇÃO)
+# SECRETS EXTERNOS
 # ========================================
-# Use External Secrets Operator ou Sealed Secrets em produção
+# External Secrets Operator para integração com Vault
 externalSecrets:
-  enabled: false
+  enabled: true  # Habilitar para sincronizar secrets do Vault
   # grafana:
   #   adminPassword:
   #     secretStore: vault-backend
@@ -289,3 +307,11 @@ externalSecrets:
   #   rootPassword:
   #     secretStore: vault-backend
   #     key: mysql/root-password
+
+# ========================================
+# VAULT CONFIGURATION
+# ========================================
+# Vault é gerenciado separadamente via ArgoCD Application
+# Veja: /helm-chart/argocd/application.yaml
+vault:
+  enabled: true  # Vault deployado via ArgoCD Application separada, não via Helm
