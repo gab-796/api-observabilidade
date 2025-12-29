@@ -93,6 +93,8 @@ argocd app get vault
 
 ### 5. Aguardar Vault e configurar secrets (IMPORTANTE!)
 
+#### 5.1. Criar secrets no Vault
+
 ```bash
 # Esperar Vault ficar pronto
 kubectl wait --for=condition=ready pod -l app=vault -n api-app-go --timeout=120s
@@ -100,15 +102,50 @@ kubectl wait --for=condition=ready pod -l app=vault -n api-app-go --timeout=120s
 # Criar secrets no Vault
 VAULT_POD=$(kubectl get pod -n api-app-go -l app=vault -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -it -n api-app-go $VAULT_POD -- sh -c "
+kubectl exec -n api-app-go $VAULT_POD -- sh -c "
   export VAULT_ADDR='http://127.0.0.1:8200'
   export VAULT_TOKEN='root'
   vault kv put secret/inventory-app/database MYSQL_ROOT_PASSWORD=admin DB_PASSWORD=admin
 "
 
-# Verificar se sincronizou
+# Verificar se foi criado
+kubectl exec -n api-app-go $VAULT_POD -- sh -c "
+  export VAULT_ADDR='http://127.0.0.1:8200'
+  export VAULT_TOKEN='root'
+  vault kv get secret/inventory-app/database
+"
+```
+
+#### 5.2. Verificar sincronização do External Secret
+
+```bash
+# Verificar se SecretStore foi criado
+kubectl get secretstore -n api-app-go
+
+# Verificar ExternalSecret (deve mostrar status: SecretSynced)
 kubectl get externalsecret -n api-app-go
+kubectl describe externalsecret mysql-credentials -n api-app-go
+
+# Verificar se o secret do Kubernetes foi criado
 kubectl get secret mysql-secrets -n api-app-go
+
+# Ver conteúdo (deve mostrar 'admin')
+kubectl get secret mysql-secrets -n api-app-go -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' | base64 -d && echo
+kubectl get secret mysql-secrets -n api-app-go -o jsonpath='{.data.DB_PASSWORD}' | base64 -d && echo
+```
+
+#### 5.3. Troubleshooting se não sincronizar
+
+```bash
+# Ver logs do External Secrets Operator
+kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets --tail=50
+
+# Ver eventos
+kubectl describe externalsecret mysql-credentials -n api-app-go
+kubectl describe secretstore vault-backend -n api-app-go
+
+# Testar conectividade com Vault
+kubectl run test --rm -it --image=curlimages/curl -- curl -v http://vault.api-app-go:8200/v1/sys/health
 ```
 
 ### 6. Verificar se tudo subiu
