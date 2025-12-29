@@ -80,7 +80,7 @@ grafana:
     auth:
       anonymous:
         enabled: true
-        orgRole: "Viewer"
+        orgRole: "Admin"  # Acesso completo (Explore, dashboards, configurações)
         disableLoginForm: false
         disableSignoutMenu: false
 
