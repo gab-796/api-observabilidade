@@ -42,7 +42,7 @@ inventoryApp:
       memory: "256Mi"
       cpu: "150m"
     requests:
-      memory: "30Mi"
+      memory: "128Mi"
       cpu: "50m"
 
 # ========================================
