@@ -746,7 +746,7 @@ data:
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "instant": false,
-              "legendFormat": "{{method}},{{path}},{{status}}",
+              "legendFormat": "{{ "{{method}},{{path}},{{status}}" }}",
               "range": true,
               "refId": "A",
               "useBackend": false
@@ -1044,7 +1044,7 @@ data:
               "fullMetaSearch": false,
               "includeNullMetadata": true,
               "instant": false,
-              "legendFormat": "{{code}}",
+              "legendFormat": "{{ "{{code}}" }}",
               "range": true,
               "refId": "A",
               "useBackend": false
