@@ -35,7 +35,7 @@ inventoryApp:
     minReplicas: 1  # Inicia com 1 pod
     maxReplicas: 5  # Escala até 5 pods máximo
     targetCPUUtilizationPercentage: 50
-    targetMemoryUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
 
   resources:
     limits:

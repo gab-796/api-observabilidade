@@ -1,3 +1,5 @@
+# usado para instalação via Helm, sem ArgoCD. Mantido apenas para referência.
+
 # Variáveis
 NAMESPACE ?= api-app-go
 RELEASE_NAME ?= api-observabilidade
