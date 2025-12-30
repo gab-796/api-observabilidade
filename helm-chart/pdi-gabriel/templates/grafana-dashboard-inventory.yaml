@@ -13,8 +13,7 @@ metadata:
 data:
   inventory-dashboard.json: |
     {
-{
-  "annotations": {
+      "annotations": {
     "list": [
       {
         "builtIn": 1,
