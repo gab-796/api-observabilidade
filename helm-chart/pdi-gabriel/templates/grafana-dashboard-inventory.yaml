@@ -1057,21 +1057,21 @@ data:
       "type": "row"
     }
   ],
-      "preload": false,
-      "refresh": "5s",
-      "schemaVersion": 41,
-      "tags": [],
-      "templating": {
-        "list": []
-      },
-      "time": {
-        "from": "now-1h",
-        "to": "now"
-      },
-      "timepicker": {},
-      "timezone": "browser",
-      "title": "dash inventory.local Copy",
-      "uid": "cf8ooal70ijnka",
-      "version": 2
-    }
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "dash inventory.local Copy",
+  "uid": "cf8ooal70ijnka",
+  "version": 2
+}
 {{- end }}
