@@ -35,7 +35,7 @@ inventoryApp:
     minReplicas: 1  # Inicia com 1 pod
     maxReplicas: 5  # Escala até 5 pods máximo
     targetCPUUtilizationPercentage: 50
-    targetMemoryUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 90
 
   resources:
     limits:
@@ -137,7 +137,7 @@ mimir:
       cpu: "2000m"
     requests:
       memory: "500Mi"
-      cpu: "1000m"
+      cpu: "500m"
 
 # Tempo com persistência
 tempo:
@@ -167,7 +167,7 @@ pyroscope:
 mysql:
   enabled: true
   replicaCount: 1  # Apenas 1 réplica para ambiente local
-  
+
   resources:
     limits:
       memory: "2Gi"
@@ -220,12 +220,6 @@ securityContext:
   allowPrivilegeEscalation: false
 
 # ========================================
-# NETWORK POLICIES (OPCIONAL)
-# ========================================
-networkPolicy:
-  enabled: false  # Habilite se o cluster suportar
-
-# ========================================
 # ALLOY CONFIGURATION - LOGS DE TODOS OS NAMESPACES
 # ========================================
 alloy:
@@ -238,7 +232,7 @@ alloy:
   # - NODE_NAME: karavela-brrioln035606-control-plane, karavela-brrioln035606-worker, etc.
   # - CLUSTER_NAME: Baseado no padrão dos seus nodes
   cluster:
-    name: "karavela-brrioln035606-cluster"  # Override do auto-detect para seu cluster específico
+    name: "karavela-brrioln035606-cluster"  # Override do auto-detect para o kind cluster local.
 
   # ⚙️ Controller Configuration - FORÇA DaemonSet (sobrescreve values.yaml)
   controller:
@@ -311,7 +305,6 @@ externalSecrets:
 # ========================================
 # VAULT CONFIGURATION
 # ========================================
-# Vault é gerenciado separadamente via ArgoCD Application
 # Veja: /helm-chart/argocd/application.yaml
 vault:
   enabled: true  # Vault deployado via ArgoCD Application separada, não via Helm
