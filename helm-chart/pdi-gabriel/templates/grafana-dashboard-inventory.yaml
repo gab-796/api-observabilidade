@@ -47,17 +47,17 @@ data:
           "panels": [
             {
               "datasource": {
-            "type": "prometheus",
-            "uid": "mimir"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "color": {
-                "mode": "palette-classic"
+                "type": "prometheus",
+                "uid": "mimir"
               },
-              "custom": {
-                "axisBorderShow": false,
-                "axisCenteredZero": false,
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
                 "axisColorMode": "text",
                 "axisLabel": "",
                 "axisPlacement": "auto",
