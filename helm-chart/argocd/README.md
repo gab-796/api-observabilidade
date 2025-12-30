@@ -368,6 +368,51 @@ kubectl logs -n api-app-go -l app=grafana
 kubectl logs -n api-app-go -l app=vault
 ```
 
+### API não consegue conectar no MySQL (Access Denied)
+
+**Erro típico:** `Error 1045 (28000): Access denied for user 'root'@'<IP>' (using password: YES)`
+
+**Causa:** MySQL e API estão usando senhas diferentes.
+
+**Diagnóstico:**
+
+```bash
+# 1. Verificar se os secrets existem e têm valores
+kubectl get secret mysql-secrets -n api-app-go -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' | base64 -d && echo
+kubectl get secret inventory-app-secrets -n api-app-go -o jsonpath='{.data.DB_PASSWORD}' | base64 -d && echo
+
+# 2. Verificar variáveis de ambiente no pod do MySQL
+kubectl exec -n api-app-go -l app=mysql -- printenv | grep MYSQL
+
+# 3. Verificar variáveis de ambiente no pod da API
+kubectl exec -n api-app-go -l app=inventory-app -- printenv | grep DB_
+
+# 4. Se as senhas forem diferentes, corrigir no Vault e aguardar sincronização
+VAULT_POD=$(kubectl get pod -n api-app-go -l app=vault -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n api-app-go $VAULT_POD -- sh -c "
+  export VAULT_ADDR='http://127.0.0.1:8200'
+  export VAULT_TOKEN='root'
+  vault kv put secret/inventory-app/database \
+    MYSQL_ROOT_PASSWORD=admin \
+    DB_PASSWORD=admin
+"
+
+# 5. Aguardar ExternalSecrets sincronizarem (~15s)
+kubectl get externalsecret -n api-app-go -w
+
+# 6. Reiniciar MySQL para pegar nova senha
+kubectl rollout restart deployment/mysql -n api-app-go
+
+# 7. Reiniciar API após MySQL estar pronto
+kubectl wait --for=condition=ready pod -l app=mysql -n api-app-go --timeout=60s
+kubectl rollout restart deployment/inventory-app -n api-app-go
+```
+
+**Importante:** 
+- MySQL usa `MYSQL_ROOT_PASSWORD` do secret `mysql-secrets`
+- API usa `DB_PASSWORD` do secret `inventory-app-secrets`
+- **Ambos devem ter o mesmo valor** (vêm do mesmo path no Vault)
+
 ## Customizações
 
 ### Adicionar environments
