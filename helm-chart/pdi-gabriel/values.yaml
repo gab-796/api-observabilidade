@@ -1,3 +1,7 @@
+# Disclaimer: Após adaptar o uso do Vault, esse values perdeu o sentido, pois não é mais possível
+# instalar via helm puro, apenas via ArgoCD, já que os arquivos yaml de secrets foram excluídos da
+# pasta templates. Mantido apenas para referência.
+
 # ========================================
 # GLOBAL CONFIGURATION
 # ========================================
@@ -76,6 +80,36 @@ mysql:
     requests:
       memory: "512Mi"
       cpu: "500m"
+
+# ========================================
+# VAULT CONFIGURATION
+# ========================================
+vault:
+  enabled: true
+  name: vault
+  replicaCount: 1
+  
+  image:
+    repository: hashicorp/vault
+    tag: "1.18.0"
+    pullPolicy: IfNotPresent
+  
+  # Dev mode (não recomendado para produção)
+  dev:
+    enabled: true
+    rootToken: "root"
+  
+  config:
+    storage: "file"
+    path: "/vault/file"
+  
+  resources:
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+    requests:
+      memory: "128Mi"
+      cpu: "250m"
 
 # ========================================
 # INVENTORY APPLICATION CONFIGURATION
