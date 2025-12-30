@@ -38,15 +38,15 @@ data:
         {
           "collapsed": true,
           "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "id": 12,
-      "panels": [
-        {
-          "datasource": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 12,
+          "panels": [
+            {
+              "datasource": {
             "type": "prometheus",
             "uid": "mimir"
           },
