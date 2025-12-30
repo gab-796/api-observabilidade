@@ -14,7 +14,7 @@ spec:
 
   source:
     repoURL: https://github.com/gab-796/api-observabilidade.git
-    targetRevision: develop  # ou específique uma branch/tag como "main", "develop", "v1.0.0"
+    targetRevision: develop  # pode ser branch/tag como "main", "develop", "v1.0.0"
     path: helm-chart/pdi-gabriel
 
     # Valores específicos para ArgoCD

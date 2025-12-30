@@ -42,6 +42,13 @@ job_name: 'inventory-app'
 2. EventRouter -> Obtem eventos de HPA e os transforma em logs, assim o painel do dashboard de logs consegue carregar os logs do HPA.
    1. instalado no ns do keda
    2. `helm upgrade my-eventrouter krateo/eventrouter --namespace keda -f values.yaml`
+3. Vault e External Secret Operator
 
 ## Tempo
 Estamos usando o init container para deletar todos os arquivos que ficam no WAL e nos blocks, afim de garantir que nada corrompido fique entre cada reinstalação que façamos no decorrer dos testes.
+
+## Uso do k6 - Teste de carga
+Uso mais rápido é com o k6 instalado, executando:
+`k6 run k6/inventory-load-test.js`
+
+Para mais detalhes, consulte o Readme dentro da pasta do k6.
