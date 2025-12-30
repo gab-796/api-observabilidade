@@ -22,7 +22,7 @@ k8s/
    ```bash
    kubectl create namespace argocd
    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-   
+
    # Aguardar pods prontos
    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-server -n argocd --timeout=300s
    ```
@@ -93,22 +93,53 @@ argocd app get vault
 
 ### 5. Aguardar Vault e configurar secrets (IMPORTANTE!)
 
+⚠️ **Por que essa etapa é necessária?**
+
+O Vault é deployado em **modo development** para facilitar o lab. Neste modo:
+- ✅ **Inicialização automática** (não precisa de `vault operator init`)
+- ✅ **Auto-unsealed** (não precisa fazer unseal manualmente)
+- ✅ **Token root fixo** (`root`) para facilitar acesso
+- ❌ **Dados NÃO são persistentes** (se o pod reiniciar, perde tudo)
+- ❌ **NÃO recomendado para produção**
+
+**Fluxo de sincronização de secrets:**
+```
+1. Vault (infraestrutura) → deployado pelo ArgoCD
+2. [VOCÊ] cria secrets manualmente → dentro do Vault
+3. External Secrets Operator → sincroniza Vault → Kubernetes Secret
+4. MySQL/API → leem do Kubernetes Secret nativo
+```
+
 #### 5.1. Criar secrets no Vault
 
+Esta é uma etapa **CRÍTICA** e **OBRIGATÓRIA**. O Vault foi deployado em modo dev, mas está **vazio**. Você precisa configurar as senhas manualmente.
+
+##### Como o fluxo funciona:
+
+```
+Vault (empty) → [VOCÊ cria secrets] → External Secrets Operator sincroniza → Kubernetes Secret → MySQL/API usa
+```
+
+##### Passo a passo detalhado:
+
 ```bash
-# Esperar Vault ficar pronto
+# 1. Esperar Vault ficar pronto
 kubectl wait --for=condition=ready pod -l app=vault -n api-app-go --timeout=120s
 
-# Criar secrets no Vault
+# 2. Obter nome do pod do Vault
 VAULT_POD=$(kubectl get pod -n api-app-go -l app=vault -o jsonpath='{.items[0].metadata.name}')
 
+# 3. Criar secrets no Vault com suas senhas
+# ⚠️ ATENÇÃO: Altere 'admin' para suas senhas reais!
 kubectl exec -n api-app-go $VAULT_POD -- sh -c "
   export VAULT_ADDR='http://127.0.0.1:8200'
   export VAULT_TOKEN='root'
-  vault kv put secret/inventory-app/database MYSQL_ROOT_PASSWORD=admin DB_PASSWORD=admin
+  vault kv put secret/inventory-app/database \
+    MYSQL_ROOT_PASSWORD=admin \
+    DB_PASSWORD=admin
 "
 
-# Verificar se foi criado
+# 4. Verificar se foi criado corretamente
 kubectl exec -n api-app-go $VAULT_POD -- sh -c "
   export VAULT_ADDR='http://127.0.0.1:8200'
   export VAULT_TOKEN='root'
@@ -116,36 +147,108 @@ kubectl exec -n api-app-go $VAULT_POD -- sh -c "
 "
 ```
 
-#### 5.2. Verificar sincronização do External Secret
+##### Customizar senhas:
+
+Para usar senhas diferentes, modifique o comando no passo 3:
 
 ```bash
-# Verificar se SecretStore foi criado
+# Exemplo com senhas customizadas:
+kubectl exec -n api-app-go $VAULT_POD -- sh -c "
+  export VAULT_ADDR='http://127.0.0.1:8200'
+  export VAULT_TOKEN='root'
+  vault kv put secret/inventory-app/database \
+    MYSQL_ROOT_PASSWORD='SuaSenhaSegura123!' \
+    DB_PASSWORD='OutraSenhaSegura456!'
+"
+```
+
+##### Estrutura dos secrets no Vault:
+
+- **Path**: `secret/inventory-app/database`
+- **Keys disponíveis**:
+  - `MYSQL_ROOT_PASSWORD`: Senha do root do MySQL
+  - `DB_PASSWORD`: Senha do usuário da aplicação
+
+Esses valores serão sincronizados automaticamente pelo External Secrets Operator para **dois** Kubernetes Secrets:
+- `mysql-secrets` → usado pelo MySQL
+- `inventory-app-secrets` → usado pela API
+
+**Por que dois secrets?**
+- Separação de responsabilidades (MySQL vs API)
+- Ambos leem do mesmo path no Vault (`secret/inventory-app/database`)
+- Facilita controle de acesso granular no futuro
+
+##### Em ambiente de produção:
+
+Para produção, você **NÃO deve** usar Vault em dev mode. As diferenças principais:
+
+| Dev Mode (LAB) | Produção |
+|----------------|----------|
+| Token fixo `root` | Autenticação Kubernetes/OIDC |
+| Dados em memória | Backend persistente (Consul, Raft, etcd) |
+| Single instance | Alta disponibilidade (3+ réplicas) |
+| HTTP | TLS obrigatório |
+| Auto-unsealed | KMS auto-unseal ou manual |
+| Secrets criados manualmente | Integração com CI/CD |
+
+Ver documentação completa em: [api-k8s/2.0-Vault/SETUP.md](../../api-k8s/2.0-Vault/SETUP.md)
+
+#### 5.2. Verificar sincronização dos External Secrets
+
+**Importante:** O ArgoCD cria **2 ExternalSecrets** automaticamente:
+1. `mysql-credentials` → cria secret `mysql-secrets` (para o MySQL)
+2. `inventory-app-credentials` → cria secret `inventory-app-secrets` (para a API)
+
+```bash
+# Verificar se SecretStore foi criado (deve mostrar Ready: True)
 kubectl get secretstore -n api-app-go
 
-# Verificar ExternalSecret (deve mostrar status: SecretSynced)
+# Verificar AMBOS os ExternalSecrets (deve mostrar status: SecretSynced e Ready:True)
 kubectl get externalsecret -n api-app-go
+
+# Detalhes de cada um
 kubectl describe externalsecret mysql-credentials -n api-app-go
+kubectl describe externalsecret inventory-app-credentials -n api-app-go
 
-# Verificar se o secret do Kubernetes foi criado
+# Verificar se os dois secrets do Kubernetes foram criados
 kubectl get secret mysql-secrets -n api-app-go
+kubectl get secret inventory-app-secrets -n api-app-go
 
-# Ver conteúdo (deve mostrar 'admin')
+# Ver conteúdo dos secrets (deve mostrar 'admin' ou suas senhas customizadas)
 kubectl get secret mysql-secrets -n api-app-go -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' | base64 -d && echo
 kubectl get secret mysql-secrets -n api-app-go -o jsonpath='{.data.DB_PASSWORD}' | base64 -d && echo
+kubectl get secret inventory-app-secrets -n api-app-go -o jsonpath='{.data.DB_PASSWORD}' | base64 -d && echo
 ```
 
 #### 5.3. Troubleshooting se não sincronizar
+
+⚠️ **Warnings de "Secret does not exist" ou "UpdateFailed" são NORMAIS** durante a inicialização!  
+Eles ocorrem porque:
+1. External Secrets Operator tenta sincronizar antes do Vault estar pronto
+2. SecretStore ainda não existe
+3. Secret ainda não foi criado no Vault (passo 5.1)
+
+**Após criar os secrets no Vault (passo 5.1), os ExternalSecrets sincronizarão automaticamente em ~15 segundos.**
 
 ```bash
 # Ver logs do External Secrets Operator
 kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets --tail=50
 
-# Ver eventos
+# Ver eventos dos ExternalSecrets
 kubectl describe externalsecret mysql-credentials -n api-app-go
+kubectl describe externalsecret inventory-app-credentials -n api-app-go
 kubectl describe secretstore vault-backend -n api-app-go
 
 # Testar conectividade com Vault
 kubectl run test --rm -it --image=curlimages/curl -- curl -v http://vault.api-app-go:8200/v1/sys/health
+
+# Se os secrets não foram criados, verificar se o path no Vault está correto
+VAULT_POD=$(kubectl get pod -n api-app-go -l app=vault -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n api-app-go $VAULT_POD -- sh -c "
+  export VAULT_ADDR='http://127.0.0.1:8200'
+  export VAULT_TOKEN='root'
+  vault kv get secret/inventory-app/database
+"
 ```
 
 ### 6. Verificar se tudo subiu
