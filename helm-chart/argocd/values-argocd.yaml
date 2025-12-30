@@ -37,6 +37,15 @@ inventoryApp:
     targetCPUUtilizationPercentage: 50
     targetMemoryUtilizationPercentage: 90
 
+    # Comportamento de scale down mais rápido para ambiente local
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 60  # Reduzido de 300s (padrão) para 60s
+        policies:
+        - type: Pods
+          value: 1              # Remove 1 pod por vez
+          periodSeconds: 60     # A cada 60 segundos
+
   resources:
     limits:
       memory: "256Mi"
