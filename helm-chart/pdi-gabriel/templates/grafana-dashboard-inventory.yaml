@@ -1,0 +1,16 @@
+{{- if and .Values.grafana.enabled .Values.grafana.dashboards.inventory.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-inventory
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.grafana.name }}
+    grafana_dashboard: "1"
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  inventory-dashboard.json: |-
+{{ .Files.Get "dashboards/inventory-dashboard.json" | indent 4 }}
+{{- end }}

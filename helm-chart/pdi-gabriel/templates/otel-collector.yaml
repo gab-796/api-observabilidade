@@ -1,0 +1,301 @@
+{{- if .Values.otelCollector.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.otelCollector.name }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.otelCollector.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: "0.0.0.0:{{ .Values.otelCollector.ports.otlpGrpc }}"
+
+      # Configuração para coletar métricas da app
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: '{{ .Values.inventoryApp.name }}'
+              static_configs:
+                - targets: ['{{ .Values.inventoryApp.name }}-metrics-service:{{ .Values.inventoryApp.ports.metrics }}']
+              scrape_interval: {{ .Values.otelCollector.config.prometheus.scrapeInterval | default "15s" }}
+              metrics_path: {{ .Values.inventoryApp.observability.prometheus.metricsPath }}
+
+            {{- if .Values.otelCollector.config.prometheus.scrapeMimir }}
+            - job_name: 'mimir-metrics'
+              scheme: http
+              scrape_timeout: 10s
+              kubernetes_sd_configs:
+                - role: endpoints
+                  namespaces:
+                    names:
+                      - {{ .Values.global.namespace }}
+              relabel_configs:
+                # Mantém apenas o Service do Mimir
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: ^{{ .Values.mimir.name }}$
+                # Mantém apenas a porta http (8080) do Service
+                - source_labels: [__meta_kubernetes_endpoint_port_name]
+                  action: keep
+                  regex: ^http$
+                # Enriquecimento com labels úteis
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: kube_namespace
+                - source_labels: [__meta_kubernetes_pod_name]
+                  target_label: kube_pod
+                - source_labels: [__meta_kubernetes_service_name]
+                  target_label: kube_service
+                - source_labels: [__meta_kubernetes_pod_controller_kind]
+                  target_label: kube_workload_kind
+                - source_labels: [__meta_kubernetes_pod_controller_name]
+                  target_label: kube_workload_name
+              scrape_interval: {{ .Values.otelCollector.config.prometheus.mimirScrapeInterval | default "30s" }}
+              metrics_path: /metrics
+            {{- end }}
+
+            {{- if .Values.otelCollector.config.prometheus.scrapeKubeStateMetrics }}
+            # Kube State Metrics - descobre automaticamente via service discovery
+            - job_name: 'kube-state-metrics'
+              kubernetes_sd_configs:
+                - role: service
+                  {{- if .Values.otelCollector.config.prometheus.kubeStateMetrics.namespaces }}
+                  namespaces:
+                    names: {{ toYaml .Values.otelCollector.config.prometheus.kubeStateMetrics.namespaces | nindent 22 }}
+                  {{- end }}
+              relabel_configs:
+                # Mantém apenas o Service exato do kube-state-metrics
+                - source_labels: [__meta_kubernetes_service_name]
+                  action: keep
+                  regex: ^ksm-kube-state-metrics$
+
+                # Usar porta de métricas (geralmente 8080)
+                - source_labels: [__address__, __meta_kubernetes_service_port_number]
+                  action: replace
+                  target_label: __address__
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+
+                # Labels úteis
+                - source_labels: [__meta_kubernetes_service_name]
+                  target_label: service
+                - source_labels: [__meta_kubernetes_namespace]
+                  target_label: namespace
+                - target_label: job
+                  replacement: kube-state-metrics
+
+              scrape_interval: {{ .Values.otelCollector.config.prometheus.kubeStateMetrics.scrapeInterval | default "30s" }}
+              metrics_path: {{ .Values.otelCollector.config.prometheus.kubeStateMetrics.metricsPath | default "/metrics" }}
+            {{- end }}
+
+            # cAdvisor (via API server proxy para kubelet) - coleta métricas de containers/nodes
+            - job_name: 'cadvisor'
+              scheme: https
+              scrape_interval: {{ .Values.otelCollector.config.prometheus.scrapeInterval | default "30s" }}
+              kubernetes_sd_configs:
+                - role: node
+              tls_config:
+                ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+                insecure_skip_verify: true
+              bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+              relabel_configs:
+                # Copia labels de node
+                - action: labelmap
+                  regex: __meta_kubernetes_node_label_(.+)
+                # Roteia via API server para cada kubelet
+                - target_label: __address__
+                  replacement: kubernetes.default.svc:443
+                - source_labels: [__meta_kubernetes_node_name]
+                  regex: (.+)
+                  target_label: __metrics_path__
+                  replacement: /api/v1/nodes/$1/proxy/metrics/cadvisor
+                # Label amigável do node
+                - source_labels: [__meta_kubernetes_node_name]
+                  target_label: kube_node
+
+    processors:
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+    exporters:
+      # Exporter para traces (Tempo)
+      otlp:
+        endpoint: {{ .Values.tempo.name }}:{{ .Values.tempo.ports.otlpGrpc }}
+        tls:
+          insecure: true
+
+      # Exporter para métricas (Mimir)
+      prometheusremotewrite:
+        endpoint: http://{{ .Values.mimir.name }}:{{ .Values.mimir.config.remoteWritePort }}/api/v1/push
+        timeout: 30s
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+
+    extensions:
+      health_check: {}
+
+    service:
+      extensions: [health_check]
+      telemetry:
+        logs:
+          level: {{ .Values.otelCollector.config.logging.level | quote }}
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp]
+        metrics:
+          receivers: [prometheus]
+          processors: [batch]
+          exporters: [prometheusremotewrite]
+---
+{{- if .Values.otelCollector.config.prometheus.scrapeKubeStateMetrics }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.otelCollector.name }}
+  namespace: {{ .Values.global.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.otelCollector.name }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - services
+      - endpoints
+      - endpointslices
+      - nodes
+      - nodes/proxy
+      - nodes/metrics
+      - pods
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.otelCollector.name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.otelCollector.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.otelCollector.name }}
+    namespace: {{ .Values.global.namespace }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.otelCollector.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.otelCollector.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.otelCollector.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.otelCollector.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.otelCollector.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.otelCollector.config.prometheus.scrapeKubeStateMetrics }}
+      serviceAccountName: {{ .Values.otelCollector.name }}
+      {{- end }}
+      containers:
+        - name: {{ .Values.otelCollector.name }}
+          image: {{ .Values.otelCollector.image.repository }}:{{ .Values.otelCollector.image.tag }}
+          command:
+            - "/otelcol-contrib"
+            - "--config=/conf/otel-collector-config.yaml"
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.tempo.name }}:{{ .Values.tempo.ports.otlpGrpc | quote }}
+            {{- if .Values.otelCollector.config.datadog.enabled }}
+            # Configuração comentada do Datadog (mantendo do manifesto)
+            # - name: DD_API_KEY_GO_LAB
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: datadog-api-key
+            #       key: DD_API_KEY_GO_LAB
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.otelCollector.ports.otlpGrpc }}
+              name: otlp-grpc
+            - containerPort: {{ .Values.otelCollector.ports.otlpHttp }}
+              name: otlp-http
+            - containerPort: {{ .Values.otelCollector.ports.healthCheck }}
+              name: health
+          volumeMounts:
+            - name: config-vol
+              mountPath: /conf
+          resources:
+            {{- toYaml .Values.otelCollector.resources | nindent 12 }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: {{ .Values.otelCollector.ports.healthCheck }}
+          #   initialDelaySeconds: 75
+          #   periodSeconds: 20
+          #   failureThreshold: 5
+          #   timeoutSeconds: 5
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: {{ .Values.otelCollector.ports.healthCheck }}
+          #   initialDelaySeconds: 50
+          #   periodSeconds: 10
+          #   failureThreshold: 5
+          #   timeoutSeconds: 5
+          {{- end }}
+      volumes:
+        - name: config-vol
+          configMap:
+            name: {{ .Values.otelCollector.name }}-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.otelCollector.name }}-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.otelCollector.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    app: {{ .Values.otelCollector.name }}
+  ports:
+    - name: otlp-grpc
+      port: {{ .Values.otelCollector.ports.otlpGrpc }}
+      targetPort: {{ .Values.otelCollector.ports.otlpGrpc }}
+      protocol: TCP
+    - name: health
+      port: {{ .Values.otelCollector.ports.healthCheck }}
+      targetPort: {{ .Values.otelCollector.ports.healthCheck }}
+      protocol: TCP
+  type: {{ .Values.services.type }}
+{{- end }}

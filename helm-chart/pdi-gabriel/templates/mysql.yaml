@@ -1,0 +1,120 @@
+{{- if .Values.mysql.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.mysql.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.mysql.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.mysql.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.mysql.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.mysql.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      containers:
+      - name: {{ .Values.mysql.name }}
+        image: {{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}
+        imagePullPolicy: {{ .Values.mysql.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.mysql.port }}
+          name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: MYSQL_ROOT_PASSWORD
+        - name: MYSQL_DATABASE
+          value: {{ .Values.mysql.config.database | quote }}
+        - name: MYSQL_ALLOW_EMPTY_PASSWORD
+          value: "no"
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+        - name: init-db
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          {{- toYaml .Values.mysql.resources | nindent 10 }}
+        {{- if .Values.monitoring.healthChecks.enabled }}
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 10 }}
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 10 }}
+        {{- end }}
+      volumes:
+      - name: mysql-data
+        emptyDir: {}
+      - name: init-db
+        configMap:
+          name: init-db-configmap
+          defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.mysql.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+  - port: {{ .Values.mysql.port }}
+    targetPort: {{ .Values.mysql.port }}
+    name: mysql
+  selector:
+    app: {{ .Values.mysql.name }}
+  type: {{ .Values.services.type }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: init-db-configmap
+  namespace: {{ .Values.global.namespace }}
+data:
+  setup.sh: |
+    #!/bin/bash
+    set -e
+
+    mysql -u root -p${MYSQL_ROOT_PASSWORD} <<-EOSQL
+      CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE};
+      USE ${MYSQL_DATABASE};
+
+      CREATE TABLE IF NOT EXISTS products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        quantity INT NOT NULL,
+        price DECIMAL(10, 2) NOT NULL
+      );
+
+      INSERT IGNORE INTO products (id, name, quantity, price) VALUES
+      (1, 'Laptop', 10, 999.99),
+      (2, 'Mouse', 50, 19.99),
+      (3, 'Keyboard', 30, 49.99);
+    EOSQL
+{{- end }}

@@ -11,6 +11,9 @@ version: 1.0.0
 # Application version - the version of the observability stack being deployed
 appVersion: "v1.0.0"
 
+# Minimum Kubernetes version required
+kubeVersion: ">=1.25.0"
+
 # Keywords for easier discovery
 keywords:
   - observability
@@ -27,21 +30,66 @@ keywords:
   - mimir
   - otel
   - opentelemetry
+  - kubernetes
+  - go
+  - api
 
 # Maintainer information
 maintainers:
   - name: Gabriel Rocha
     email: gabriel.rocha@ufrj.br
+    url: https://github.com/gab-796
 
 # Home page and source code URLs
 home: https://github.com/gab-796/api-observabilidade
 sources:
   - https://github.com/gab-796/api-observabilidade
+icon: https://grafana.com/static/img/menu/grafana2.svg
 
 # Dependencies (if using external charts)
 dependencies: []
+# Exemplo se você quiser usar charts externos no futuro:
+# dependencies:
+#   - name: mysql
+#     version: "9.4.1"
+#     repository: https://charts.bitnami.com/bitnami
+#     condition: mysql.external
+#   - name: prometheus-operator
+#     version: "45.7.1"
+#     repository: https://prometheus-community.github.io/helm-charts
+#     condition: prometheus.enabled
 
 # Chart annotations
 annotations:
   category: Observability
   licenses: Apache-2.0
+
+  # Artifact Hub annotations (se você publicar no Artifact Hub)
+  artifacthub.io/category: monitoring-logging
+  artifacthub.io/operator: "false"
+  artifacthub.io/prerelease: "false"
+
+  # Security scanning annotations
+  artifacthub.io/containsSecurityUpdates: "false"
+
+  # Changes annotation (será útil nas próximas versões)
+  artifacthub.io/changes: |
+    - kind: added
+      description: Initial release of complete observability stack
+    - kind: added
+      description: Support for Grafana, Loki, Tempo, Pyroscope, Mimir, Alloy
+    - kind: added
+      description: OpenTelemetry Collector integration
+    - kind: added
+      description: Configurable Ingress support
+    - kind: added
+      description: Persistent storage support
+
+  # Links úteis
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/gab-796/api-observabilidade/blob/main/README.md
+    - name: Grafana
+      url: https://grafana.com/
+    - name: OpenTelemetry
+      url: https://opentelemetry.io/

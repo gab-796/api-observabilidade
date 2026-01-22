@@ -1,0 +1,3 @@
+config:
+  # Muda o formato de saída para um evento por linha de log
+  sink: glog

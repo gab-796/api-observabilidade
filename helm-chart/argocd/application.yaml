@@ -1,0 +1,74 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-observabilidade
+  namespace: argocd  # Namespace onde o ArgoCD está instalado
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    app.kubernetes.io/name: api-observabilidade
+    app.kubernetes.io/component: observability-stack
+    environment: development
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/gab-796/api-observabilidade.git
+    targetRevision: develop  # pode ser branch/tag como "main", "develop", "v1.0.0"
+    path: helm-chart/pdi-gabriel
+
+    # Valores específicos para ArgoCD
+    helm:
+      valueFiles:
+        - values.yaml  # Values padrão (base)
+        - ../argocd/values-argocd.yaml  # Override para ArgoCD
+      # Override de valores mínimos (resto vem do values-argocd.yaml)
+      parameters:
+        - name: global.environment
+          value: development
+        - name: inventoryApp.image.tag
+          value: v4.0
+
+  # Configuração do destino
+  destination:
+    server: https://kubernetes.default.svc  # Cluster local
+    namespace: api-app-go
+
+  # Políticas de sincronização
+  syncPolicy:
+    automated:
+      prune: true          # Remove recursos órfãos automaticamente
+      selfHeal: true       # Corrige drift automaticamente
+      allowEmpty: false    # Não permite aplicar manifesto vazio
+    syncOptions:
+      - CreateNamespace=true     # Cria namespace automaticamente
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true          # Remove recursos na ordem correta
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true # Aplica apenas  recursos out-of-sync
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Configuração de health checks customizados
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      managedFieldsManagers:
+        - kube-controller-manager
+      jsonPointers:
+        - /spec/replicas  # Ignora mudanças de réplicas do HPA
+
+    # Ignora anotações dinâmicas do Grafana
+    - group: ""
+      kind: ConfigMap
+      name: grafana-config
+      jsonPointers:
+        - /metadata/annotations
+
+  # Health checks customizados para componentes específicos
+  revisionHistoryLimit: 10

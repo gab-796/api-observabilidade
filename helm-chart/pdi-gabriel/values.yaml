@@ -1,15 +1,118 @@
-# Complete Observability Stack Configuration
-# This values.yaml configures the entire observability stack including:
-# API App, Grafana, Loki, Tempo, Pyroscope, Alloy, Mimir, OTel Collector, MySQL
-
-# Global configuration
-global:
-  namespace: api-app-go
-  storageClass: standard
-  imagePullPolicy: IfNotPresent
+# Disclaimer: Após adaptar o uso do Vault, esse values perdeu o sentido, pois não é mais possível
+# instalar via helm puro, apenas via ArgoCD, já que os arquivos yaml de secrets foram excluídos da
+# pasta templates. Mantido apenas para referência.
 
 # ========================================
-# APPLICATION CONFIGURATION
+# GLOBAL CONFIGURATION
+# ========================================
+global:
+  namespace: api-app-go
+  environment: development
+
+# ========================================
+# COMMON LABELS AND ANNOTATIONS
+# ========================================
+commonLabels:
+  project: api-observabilidade
+  team: platform
+  version: v1.0.0
+
+commonAnnotations: {}
+
+# ========================================
+# SERVICE ACCOUNT CONFIGURATION
+# ========================================
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+  automount: true
+
+# ========================================
+# SERVICES CONFIGURATION
+# ========================================
+services:
+  type: ClusterIP
+
+# ========================================
+# MONITORING AND HEALTH CHECKS
+# ========================================
+monitoring:
+  healthChecks:
+    enabled: true
+    readinessProbe:
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+    livenessProbe:
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+
+# ========================================
+# MYSQL DATABASE CONFIGURATION
+# ========================================
+mysql:
+  enabled: true
+  name: mysql
+  replicaCount: 1
+  port: 3306
+
+  image:
+    repository: mysql
+    tag: "8.0"
+    pullPolicy: IfNotPresent
+
+  config:
+    # rootPassword vem do Vault via External Secret (mysql-secrets)
+    # rootPassword: admin  # NÃO USAR - secret gerenciado pelo Vault
+    database: inventory
+    user: root
+
+  resources:
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+
+# ========================================
+# VAULT CONFIGURATION
+# ========================================
+vault:
+  enabled: true
+  name: vault
+  replicaCount: 1
+  
+  image:
+    repository: hashicorp/vault
+    tag: "1.18.0"
+    pullPolicy: IfNotPresent
+  
+  # Dev mode (não recomendado para produção)
+  dev:
+    enabled: true
+    rootToken: "root"
+  
+  config:
+    storage: "file"
+    path: "/vault/file"
+  
+  resources:
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+    requests:
+      memory: "128Mi"
+      cpu: "250m"
+
+# ========================================
+# INVENTORY APPLICATION CONFIGURATION
 # ========================================
 inventoryApp:
   enabled: true
@@ -19,61 +122,52 @@ inventoryApp:
     repository: gab796/inventory_app
     tag: v4.0
     pullPolicy: IfNotPresent
-  
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    host: inventory.local
+    exposeMetrics: true
+    annotations: {}
+    tls: false
   ports:
     http: 10000
     metrics: 2113
-  
-  resources:
-    limits:
-      memory: "128Mi"
-      cpu: "500m"
-    requests:
-      memory: "64Mi"
-      cpu: "250m"
-  
-  # Environment variables
-  env:
-    DB_HOST: mysql-service
-    DB_NAME: inventory
-    DB_USER: root
-    OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector-service.api-app-go:4317
-    PYROSCOPE_URL: http://pyroscope:4040
-  
-  # Database password from secret
-  secret:
-    dbPassword: "rootpassword"
 
-# ========================================
-# DATABASE CONFIGURATION
-# ========================================
-mysql:
-  enabled: true
-  name: mysql
-  replicaCount: 1
-  image:
-    repository: mysql
-    tag: "8.0"
-    pullPolicy: IfNotPresent
-  
-  port: 3306
-  
+  # Application configuration
+  config:
+    logLevel: info
+    ginMode: release
+    additionalEnvVars: {}
+
+  # Observability configuration
+  observability:
+    otel:
+      protocol: grpc
+    prometheus:
+      metricsPath: /metrics
+
+  # Secrets gerenciados pelo Vault via External Secrets Operator
+  # Veja: templates/external-secret.yaml
+  secret: {}
+    # dbPassword: "admin"  # NÃO USAR - secret gerenciado pelo Vault (mysql-secrets)
+
+  env: {}
+
   resources:
     limits:
-      memory: "1Gi"
-      cpu: "1000m"
-    requests:
       memory: "512Mi"
       cpu: "500m"
-  
-  # Database configuration
-  config:
-    rootPassword: "rootpassword"
-    database: "inventory"
-  
-  # Storage
-  persistence:
-    size: 10Gi
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+
+  # Autoscaling configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 50
+    targetMemoryUtilizationPercentage: 80
 
 # ========================================
 # GRAFANA CONFIGURATION
@@ -82,13 +176,89 @@ grafana:
   enabled: true
   name: grafana
   replicaCount: 1
+
   image:
     repository: grafana/grafana
-    tag: 11.6.0
+    tag: "11.6.0"
     pullPolicy: IfNotPresent
-  
-  port: 3000
-  
+
+  ports:
+    http: 3000
+
+  config:
+    # ⚠️ ESCOLHA: Autenticação anônima OU login tradicional
+
+    # OPÇÃO 1: Autenticação anônima (como seu arquivo original)
+    auth:
+      anonymous:
+        enabled: true
+        orgRole: "Admin"
+        disableLoginForm: true
+        disableSignoutMenu: true
+
+    # OPÇÃO 2: Login tradicional (comentar se usar anônimo)
+    # adminUser: admin
+    # adminPassword: admin123
+
+    # Configurações gerais
+    logLevel: warn
+    rootUrl: "http://grafana-web.local"
+
+    users:
+      allowSignUp: false
+
+    # Features e plugins
+    featureToggles: "traceqlEditor,metricsSummary"
+
+    plugins:
+      install: "https://storage.googleapis.com/integration-artifacts/grafana-exploretraces-app/grafana-exploretraces-app-latest.zip;grafana-traces-app"
+
+  # Data sources configuration
+  datasources:
+    tempo:
+      enabled: true
+      url: http://tempo:3200
+      isDefault: true
+
+    loki:
+      enabled: true
+      url: http://loki:3100
+      maxLines: 1000
+
+    pyroscope:
+      enabled: true
+      url: http://pyroscope:4040
+
+    mimir:
+      enabled: true
+      url: http://mimir:9009/prometheus
+
+# ========================================
+# GRAFANA INGRESS CONFIGURATION
+# ========================================
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - host: grafana-web.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: grafana
+              port: 3000
+    exposeStack: false
+    annotations: {}
+    tls: []
+
+  # Dashboards configuration
+  dashboards:
+    inventory:
+      enabled: true
+      title: "API Inventory - Observability Dashboard"
+      folder: "API Inventory"
+
   resources:
     limits:
       memory: "512Mi"
@@ -96,204 +266,109 @@ grafana:
     requests:
       memory: "256Mi"
       cpu: "250m"
-  
-  # Grafana configuration
-  config:
-    auth:
-      anonymousEnabled: true
-      anonymousOrgRole: Admin
-      disableLoginForm: true
-    server:
-      rootUrl: "%(protocol)s://%(domain)s:%(http_port)s/grafana/"
-      serveFromSubPath: true
-  
-  # Datasources configuration
-  datasources:
-    prometheus:
-      url: http://alloy:12345/api/v1/push
-      type: prometheus
-    loki:
-      url: http://loki:3100
-      type: loki
-    tempo:
-      url: http://tempo:3200
-      type: tempo
-    pyroscope:
-      url: http://pyroscope:4040
-      type: phlare
+
+  # Persistence (para manter dashboards, plugins instalados, etc.)
+  persistence:
+    enabled: false
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+    storageClass: ""  # Use uma StorageClass válida do cluster ou deixe vazio
+
+  # Modo efêmero (dev): garante que o banco (grafana.db) seja recriado a cada start
+  ephemeral:
+    enabled: true      # Se true, ignora PVC (usa emptyDir) e roda initContainer limpando grafana.db
+    resetDb: true      # Se false, apenas não persiste; se true força remoção explícita do arquivo
 
 # ========================================
-# LOKI CONFIGURATION
+# GRAFANA ALLOY CONFIGURATION
 # ========================================
-loki:
-  enabled: true
-  name: loki
-  replicaCount: 1
-  image:
-    repository: grafana/loki
-    tag: 2.9.5
-    pullPolicy: IfNotPresent
-  
-  ports:
-    http: 3100
-    grpc: 9095
-  
-  resources:
-    limits:
-      memory: "1Gi"
-      cpu: "1000m"
-    requests:
-      memory: "512Mi"
-      cpu: "500m"
-  
-  # Loki configuration
-  config:
-    authEnabled: false
-    server:
-      httpListenPort: 3100
-      logLevel: warn
-    storage:
-      type: filesystem
-      filesystem:
-        chunksDirectory: /loki/chunks
-        rulesDirectory: /loki/rules
 
-# ========================================
-# TEMPO CONFIGURATION
-# ========================================
-tempo:
-  enabled: true
-  name: tempo
-  replicaCount: 1
-  image:
-    repository: grafana/tempo
-    tag: 2.6.0
-    pullPolicy: IfNotPresent
-  
-  ports:
-    http: 3200
-    otlpGrpc: 4317
-    otlpHttp: 4318
-  
-  resources:
-    limits:
-      memory: "1Gi"
-      cpu: "1000m"
-    requests:
-      memory: "512Mi"
-      cpu: "500m"
-  
-  # Tempo configuration
-  config:
-    server:
-      httpListenPort: 3200
-      logLevel: warn
-    storage:
-      trace:
-        backend: local
-        local:
-          path: /var/tempo/traces
-
-# ========================================
-# PYROSCOPE CONFIGURATION
-# ========================================
-pyroscope:
-  enabled: true
-  name: pyroscope
-  replicaCount: 1
-  image:
-    repository: grafana/pyroscope
-    tag: 1.13.0
-    pullPolicy: IfNotPresent
-  
-  ports:
-    http: 4040
-    grpc: 4041
-  
-  resources:
-    limits:
-      memory: "1Gi"
-      cpu: "1000m"
-    requests:
-      memory: "512Mi"
-      cpu: "500m"
-  
-  # Pyroscope configuration
-  config:
-    server:
-      httpListenPort: 4040
-      grpcListenPort: 4041
-      logLevel: warn
-    storage:
-      backend: filesystem
-      filesystem:
-        path: /var/pyroscope
-
-# ========================================
-# ALLOY CONFIGURATION
-# ========================================
 alloy:
   enabled: true
   name: alloy
   replicaCount: 1
+  stabilityLevel: "public-preview" # Permite usar o pyroscope.receive_http
+
+  # 🏷️ Cluster identification (auto-descoberta via Kubernetes API)
+  # O Alloy detecta automaticamente via environment variables:
+  # - NODE_NAME: spec.nodeName do pod (ex: karavela-brrioln035606-worker)
+  # - HOSTNAME: hostname do node onde o pod está rodando
+  # - CLUSTER_NAME: nome configurado aqui ou auto-detectado
+  cluster:
+    name: "auto-detected-cluster"  # Fallback se não overrideado no values-argocd.yaml
+
+  # Controller configuration (seguindo padrão oficial do Grafana Alloy)
+  controller:
+    # Type of controller to use for deploying Grafana Alloy in the cluster.
+    # Must be one of 'daemonset', 'deployment', or 'statefulset'.
+    #type: 'deployment'  # Para coleta centralizada (padrão)
+    type: 'daemonset'   # Para coleta por node (logs de host, node metrics, etc.)
+
+    # 🔥 Configurações para DaemonSet (usando estrutura oficial do chart)
+    # Quando controller.type = "daemonset", estas configurações são aplicadas:
+    hostNetwork: false  # Set true para acessar métricas de host
+    hostPID: false      # Set true para coletar métricas de processo
+    dnsPolicy: "ClusterFirst"  # ClusterFirstWithHostNet se hostNetwork=true
+
+    # Node selector para controlar onde o DaemonSet/Deployment roda
+    nodeSelector: {}
+    # Exemplo:
+    # nodeSelector:
+    #   kubernetes.io/os: linux
+
+    # Tolerations para rodar em nodes específicos (ex: master nodes)
+    tolerations: []
+    # Exemplo:
+    # tolerations:
+    # - key: node-role.kubernetes.io/master
+    #   operator: Exists
+    #   effect: NoSchedule
+
+  # Configurações específicas para DaemonSet (mantidas para compatibilidade)
+  daemonset:
+
+    # Volumes de host para coleta de métricas de sistema
+    hostVolumes:
+      proc:
+        enabled: false  # /proc para métricas de CPU, memória, etc.
+      sys:
+        enabled: false  # /sys para métricas de sistema
+      rootfs:
+        enabled: false  # / para métricas de filesystem
+
   image:
     repository: grafana/alloy
     tag: v1.9.1
     pullPolicy: IfNotPresent
-  
+
   ports:
     http: 12345
-    grpc: 12346
-  
-  resources:
-    limits:
-      memory: "512Mi"
-      cpu: "500m"
-    requests:
-      memory: "256Mi"
-      cpu: "250m"
-  
-  # Alloy configuration for metrics collection
-  config:
-    server:
-      httpListenPort: 12345
-    logging:
-      level: warn
+    profiling: 4040   # Porta separada para o receiver pyroscope (evita conflito com HTTP interno do Alloy)
 
-# ========================================
-# MIMIR CONFIGURATION
-# ========================================
-mimir:
-  enabled: true
-  name: mimir
-  replicaCount: 1
-  image:
-    repository: grafana/mimir
-    tag: 2.13.0
-    pullPolicy: IfNotPresent
-  
-  ports:
-    http: 8080
-    grpc: 9095
-  
+  config:
+    logging:
+      level: info
+      format: json
+
+    logs:
+      allNamespaces: true  # Se true, coleta logs de todos os namespaces do cluster
+
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 473
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
   resources:
     limits:
-      memory: "2Gi"
-      cpu: "1000m"
+      memory: "256Mi"
+      cpu: "200m"
     requests:
-      memory: "1Gi"
-      cpu: "500m"
-  
-  # Mimir configuration
-  config:
-    target: all
-    server:
-      httpListenPort: 8080
-      logLevel: warn
-    storage:
-      backend: filesystem
-      filesystem:
-        dir: /var/mimir
+      memory: "128Mi"
+      cpu: "100m"
 
 # ========================================
 # OPENTELEMETRY COLLECTOR CONFIGURATION
@@ -302,15 +377,114 @@ otelCollector:
   enabled: true
   name: otel-collector
   replicaCount: 1
+
   image:
     repository: otel/opentelemetry-collector-contrib
-    tag: 0.123.0
+    tag: "0.123.0-amd64"
     pullPolicy: IfNotPresent
 
   ports:
     otlpGrpc: 4317
     otlpHttp: 4318
-    metrics: 8889
+    healthCheck: 13133
+
+  config:
+    logging:
+      level: info
+
+    prometheus:
+      scrapeInterval: 15s
+      scrapeMimir: true
+      mimirScrapeInterval: 30s
+
+      # Kube State Metrics configuration
+      scrapeKubeStateMetrics: true
+      kubeStateMetrics:
+        scrapeInterval: 30s
+        metricsPath: /metrics
+        namespaces: ["ksm"]  # Namespace onde o kube-state-metrics está instalado
+
+    datadog:
+      enabled: false
+
+  resources:
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+    requests:
+      memory: "128Mi"
+      cpu: "500m"
+
+# ========================================
+# GRAFANA TEMPO CONFIGURATION (TRACES)
+# ========================================
+tempo:
+  enabled: true
+  name: tempo
+  replicaCount: 1
+
+  image:
+    repository: grafana/tempo
+    tag: "2.6.0"
+    pullPolicy: IfNotPresent
+
+  ports:
+    http: 3200
+    otlpGrpc: 4317
+    otlpHttp: 4318
+    grpc: 9095
+
+  config:
+    server:
+      logLevel: warn
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo
+
+  resources:
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+
+# ========================================
+# GRAFANA LOKI CONFIGURATION (LOGS)
+# ========================================
+loki:
+  enabled: true
+  name: loki
+  replicaCount: 1
+
+  image:
+    repository: grafana/loki
+    tag: "2.9.5"
+    pullPolicy: IfNotPresent
+
+  ports:
+    http: 3100
+    grpc: 9095
+
+  config:
+    authEnabled: false
+    server:
+      logLevel: warn
+    storage:
+      type: filesystem
+      filesystem:
+        chunksDirectory: /loki/chunks
+        rulesDirectory: /loki/rules
+
+  # Configuração de persistência específica para Loki
+  persistence:
+    enabled: false
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
 
   resources:
     limits:
@@ -320,162 +494,151 @@ otelCollector:
       memory: "256Mi"
       cpu: "250m"
 
-  # OTel Collector configuration
-  config:
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-    exporters:
-      otlp/tempo:
-        endpoint: http://tempo:4317
-        tls:
-          insecure: true
-      prometheusremotewrite:
-        endpoint: http://mimir:8080/api/v1/push
-
 # ========================================
-# INGRESS CONFIGURATION
+# GRAFANA MIMIR CONFIGURATION (METRICS)
 # ========================================
-ingress:
+mimir:
   enabled: true
-  className: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    nginx.ingress.kubernetes.io/use-regex: "true"
+  name: mimir
+  replicaCount: 1
 
-  hosts:
-    - host: inventory.local
-      http:
-        paths:
-        # Aplicação principal
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: inventory-service
-                port:
-                  number: 10000
-          - path: /metrics # Path exclusivo pro /metrics ser usado com o ingress
-            pathType: Prefix
-            backend:
-              service:
-                name: inventory-app-metrics-service # Nome do Service de métricas
-                port:
-                  number: 2113
+  image:
+    repository: grafana/mimir
+    tag: "2.13.0"
+    pullPolicy: IfNotPresent
 
-    - host: grafana-web.local # Acessar a UI do Grafana
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: grafana
-                port:
-                  number: 3000
+  ports:
+    http: 8080
+    grpc: 9095
+
+  config:
+    multitenancyEnabled: false
+    internalMetricsPort: 8080  # Porta para métricas internas (/metrics)
+    remoteWritePort: 9009      # Porta para receber métricas (/api/v1/push)
+    server:
+      logLevel: warn
+    storage:
+      backend: filesystem
+      filesystem:
+        dir: /data/blocks
+        rulerDir: /data/ruler
+    ingester:
+      replicationFactor: 1
+      outOfOrderTimeWindow: 10m
+    limits:
+      maxGlobalSeriesPerUser: 10000000
+      ingestionRate: 100000
+      outOfOrderTimeWindow: 10m
+
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+
 # ========================================
-# SERVICE CONFIGURATION
+# GRAFANA PYROSCOPE CONFIGURATION (PROFILING)
 # ========================================
-services:
-  type: ClusterIP
-  # Each component will have its own service created automatically
+pyroscope:
+  enabled: true
+  name: pyroscope
+  replicaCount: 1
+
+  image:
+    repository: grafana/pyroscope
+    tag: "1.13.0"
+    pullPolicy: IfNotPresent
+
+  ports:
+    http: 4040
+    grpc: 4041
+
+  config:
+    server:
+      logLevel: warn
+    storage:
+      backend: filesystem
+      filesystem:
+        path: /var/lib/pyroscope
+
+  resources:
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+    requests:
+      memory: "512Mi"
+      cpu: "500m"
+
+# ========================================
+# PERSISTENCE (OPCIONAL)
+# ========================================
+persistence:
+  enabled: false
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size:
+    mysql: 1Gi
+    grafana: 1Gi
+    loki: 1Gi
+    mimir: 1Gi
+    tempo: 1Gi
+    pyroscope: 1Gi
 
 # ========================================
 # SECURITY CONFIGURATION
 # ========================================
-serviceAccount:
-  create: true
-  automount: true
-  annotations: {}
-  name: ""
+podSecurityContext:
+  fsGroup: 2000
 
-podSecurityContext: {}
-securityContext: {}
-
-# ========================================
-# RBAC CONFIGURATION (for Alloy)
-# ========================================
-rbac:
-  create: true
-  # ClusterRole permissions for Alloy to scrape metrics
-  clusterRole:
-    rules:
-      - apiGroups: [""]
-        resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods"]
-        verbs: ["get", "list", "watch"]
-      - apiGroups: ["extensions"]
-        resources: ["ingresses"]
-        verbs: ["get", "list", "watch"]
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
 
 # ========================================
-# PERSISTENCE CONFIGURATION
-# ========================================
-persistence:
-  storageClass: standard
-  accessMode: ReadWriteOnce
-  sizes:
-    mysql: 10Gi
-    loki: 10Gi
-    tempo: 10Gi
-    pyroscope: 5Gi
-    mimir: 20Gi
-
-# ========================================
-# MONITORING CONFIGURATION
-# ========================================
-monitoring:
-  # Enable ServiceMonitor for Prometheus Operator
-  serviceMonitor:
-    enabled: false
-    interval: 30s
-    path: /metrics
-  
-  # Health checks
-  healthChecks:
-    enabled: true
-    livenessProbe:
-      initialDelaySeconds: 30
-      periodSeconds: 10
-    readinessProbe:
-      initialDelaySeconds: 5
-      periodSeconds: 5
-
-# ========================================
-# SCALING CONFIGURATION
-# ========================================
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
-
-# ========================================
-# NODE CONFIGURATION
+# NODE SELECTOR, AFFINITY, TOLERATIONS
 # ========================================
 nodeSelector: {}
+
 tolerations: []
+
 affinity: {}
+
+# ========================================
+# AUTOSCALING (OPCIONAL)
+# ========================================
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+  targetMemoryUtilizationPercentage: 80
 
 # ========================================
 # ADDITIONAL CONFIGURATION
 # ========================================
-# Additional labels to be added to all resources
-commonLabels:
-  app.kubernetes.io/part-of: api-observabilidade
-  environment: development
+nameOverride: ""
+fullnameOverride: ""
 
-# Additional annotations to be added to all resources
-commonAnnotations: {}
+# Extra environment variables for all deployments
+extraEnvVars: []
 
-# Image pull secrets for private registries
-imagePullSecrets: []
+# Extra volumes and volume mounts for all deployments
+extraVolumes: []
+extraVolumeMounts: []
 
-# Pod disruption budget
-podDisruptionBudget:
-  enabled: false
-  minAvailable: 1
+# Pod annotations
+podAnnotations: {}
+
+# Deployment strategy
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 1

@@ -1,0 +1,319 @@
+# ========================================
+# VALUES PARA ARGOCD ENVIRONMENT
+# ========================================
+# Este arquivo sobrescreve values.yaml para deployments via ArgoCD
+
+# ========================================
+# GLOBAL CONFIGURATION
+# ========================================
+global:
+  namespace: api-app-go
+  environment: development
+
+# Nota: External Secrets Operator já instalado globalmente no namespace external-secrets
+# Não precisa configurar aqui
+
+# ========================================
+# VAULT CONFIGURATION
+# ========================================
+vault:
+  enabled: true  # Habilitar deploy do Vault via Helm chart
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+
+# ========================================
+# INVENTORY APPLICATION CONFIGURATION
+# ========================================
+inventoryApp:
+  enabled: true
+  image:
+    tag: v4.0
+    pullPolicy: IfNotPresent  # Mais eficiente no ArgoCD
+
+  # HPA habilitado para testes (valores reduzidos para ambiente local)
+  autoscaling:
+    enabled: true
+    minReplicas: 1  # Inicia com 1 pod
+    maxReplicas: 5  # Escala até 5 pods máximo
+    targetCPUUtilizationPercentage: 50
+    targetMemoryUtilizationPercentage: 90
+
+    # Comportamento de scale down mais rápido para ambiente local
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 60  # Reduzido de 300s (padrão) para 60s
+        policies:
+        - type: Pods
+          value: 1              # Remove 1 pod por vez
+          periodSeconds: 60     # A cada 60 segundos
+
+  resources:
+    limits:
+      memory: "256Mi"
+      cpu: "150m"
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+
+# ========================================
+# GRAFANA CONFIGURATION PARA ARGOCD
+# ========================================
+grafana:
+  enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+  
+  service:
+    enabled: true          # Se o subchart verificar esta flag
+    type: ClusterIP
+    port: 80               # Porta exposta no Service (Ingress aponta aqui)
+    targetPort: 3000       # Porta interna do container Grafana
+    portName: http-web     # Ajuste se o chart exigir outro nome (opcional)
+    annotations: {}
+    labels: {}
+
+  # Persistência habilitada para ArgoCD (dados não devem ser perdidos)
+  persistence:
+    enabled: false
+    size: 10Gi
+    storageClass: ""  # Use storageClass do cluster
+    accessModes:
+      - ReadWriteOnce
+
+  ephemeral:
+    enabled: true
+    resetDb: false
+
+  config:
+    adminUser: admin
+    adminPassword: "{{ .Values.grafana.adminPasswordSecret }}"  # Será sobrescrito por secret
+
+    auth:
+      anonymous:
+        enabled: true
+        orgRole: "Admin"  # Acesso completo (Explore, dashboards, configurações)
+        disableLoginForm: false
+        disableSignoutMenu: false
+
+    # Configurações de segurança
+    security:
+      adminPasswordPolicy: true
+      cookieSecure: true
+      allowEmbedding: false
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - host: grafana-web.local
+        paths:
+          - path: /
+            pathType: Prefix
+            service:
+              name: grafana
+              port: 3000
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+
+# ========================================
+# OBSERVABILITY STACK - RESOURCES
+# ========================================
+
+# Loki com persistência
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClass: ""
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "500Mi"
+      cpu: "500m"
+
+# Mimir com persistência
+mimir:
+  enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+  
+  config:
+    internalMetricsPort: 8080  # Porta para métricas internas (/metrics)
+    remoteWritePort: 9009      # Porta para receber métricas (/api/v1/push)
+  resources:
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"
+    requests:
+      memory: "500Mi"
+      cpu: "500m"
+
+# Tempo com persistência
+tempo:
+  enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+  
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "500Mi"
+      cpu: "500m"
+
+# Pyroscope com persistência
+pyroscope:
+  enabled: true
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "500Mi"
+      cpu: "500m"
+
+# MySQL com persistência
+mysql:
+  enabled: true
+  replicaCount: 1  # Apenas 1 réplica para ambiente local
+
+  resources:
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+    requests:
+      memory: "500Mi"
+      cpu: "500m"
+
+# ========================================
+# MONITORING CONFIGURATION
+# ========================================
+monitoring:
+  healthChecks:
+    enabled: true
+    readinessProbe:
+      initialDelaySeconds: 30  # Mais tempo para inicialização
+      periodSeconds: 10
+      timeoutSeconds: 10      # Timeout maior
+      failureThreshold: 5     # Mais tolerante a falhas temporárias
+      successThreshold: 1
+    livenessProbe:
+      initialDelaySeconds: 60  # Ainda mais tempo para liveness
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 5
+      successThreshold: 1
+
+# ========================================
+# SECURITY CONFIGURATION
+# ========================================
+serviceAccount:
+  create: true
+  annotations:
+    # Adicione anotações específicas do cluster se necessário
+    # exemplo: iam.gke.io/gcp-service-account: observability@project.iam.gserviceaccount.com
+
+podSecurityContext:
+  fsGroup: 2000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false  # Alguns components precisam escrever
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+
+# ========================================
+# ALLOY CONFIGURATION - LOGS DE TODOS OS NAMESPACES
+# ========================================
+alloy:
+  enabled: true
+  name: alloy
+  replicaCount: 1
+
+  # 🏷️ Cluster identification (auto-detectado via Kubernetes API)
+  # O Alloy detecta automaticamente os nomes dos nodes via environment variables:
+  # - NODE_NAME: karavela-brrioln035606-control-plane, karavela-brrioln035606-worker, etc.
+  # - CLUSTER_NAME: Baseado no padrão dos seus nodes
+  cluster:
+    name: "karavela-brrioln035606-cluster"  # Override do auto-detect para o kind cluster local.
+
+  # ⚙️ Controller Configuration - FORÇA DaemonSet (sobrescreve values.yaml)
+  controller:
+    # Tipo de controller - DEVE ser 'daemonset' para coleta completa
+    type: "daemonset"  # Options: "deployment", "daemonset", "statefulset"
+
+    # 🔥 DaemonSet specific configurations (seguindo chart oficial)
+    # Configurações de rede e sistema para acesso completo ao host
+    hostNetwork: true     # CRITICAL: Acesso à rede do host para métricas
+    hostPID: true        # CRITICAL: Acesso aos processos do host
+    privileged: true     # CRITICAL: Acesso completo para logs de sistema
+    dnsPolicy: "ClusterFirstWithHostNet"  # DNS policy para hostNetwork
+
+    # Node selector para controlar onde o DaemonSet roda
+    nodeSelector:
+      kubernetes.io/os: linux
+
+    # Tolerations para rodar em TODOS os nodes (incluindo masters/control-plane)
+    tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
+  config:
+    logs:
+      allNamespaces: true  # 🔥 HABILITA LOGS DE TODOS OS NAMESPACES
+
+  # 🔥 VOLUMES DE HOST PARA MÉTRICAS COMPLETAS (mantém compatibilidade)
+  daemonset:
+    # Volumes de host para coleta de métricas de sistema
+    hostVolumes:
+      proc:
+        enabled: true    # /proc - CPU, memória, processos
+      sys:
+        enabled: true    # /sys - Informações de hardware
+      rootfs:
+        enabled: true    # / - Filesystem metrics
+
+# ========================================
+# OTEL COLLECTOR - KUBE STATE METRICS
+# ========================================
+otelCollector:
+  enabled: true
+  config:
+    prometheus:
+      scrapeKubeStateMetrics: true  # 🔥 HABILITA COLETA DO KUBE-STATE-METRICS
+      scrapeMimir: true               # 🔥 HABILITA SCRAPE DAS MÉTRICAS DO MIMIR
+      mimirScrapeInterval: 30s        # Intervalo para scrape do Mimir
+      kubeStateMetrics:
+        namespaces: ["ksm"]  # 🎯 Namespace onde o kube-state-metrics está instalado
+
+# ========================================
+# SECRETS EXTERNOS
+# ========================================
+# External Secrets Operator para integração com Vault
+externalSecrets:
+  enabled: true  # Habilitar para sincronizar secrets do Vault
+  # grafana:
+  #   adminPassword:
+  #     secretStore: vault-backend
+  #     key: grafana/admin-password
+  # mysql:
+  #   rootPassword:
+  #     secretStore: vault-backend
+  #     key: mysql/root-password
+
+# ========================================
+# VAULT CONFIGURATION
+# ========================================
+# Veja: /helm-chart/argocd/application.yaml
+vault:
+  enabled: true  # Vault deployado via ArgoCD Application separada, não via Helm

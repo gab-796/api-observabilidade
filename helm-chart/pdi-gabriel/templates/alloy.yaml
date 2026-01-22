@@ -1,64 +1,228 @@
+{{- if .Values.alloy.enabled }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: alloy
-  namespace: api-app-go
+  name: {{ .Values.alloy.name }}
+  namespace: {{ .Values.global.namespace }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: alloy
+  name: {{ .Values.alloy.name }}
 rules:
+  # Core resources
   - apiGroups: [""]
     resources:
       - nodes
       - nodes/proxy
+      - nodes/stats
       - nodes/metrics
       - services
       - endpoints
       - pods
       - pods/log
-      - ingresses
+      - pods/status
       - configmaps
+      - secrets
+      - namespaces
+      - events
+      - persistentvolumes
+      - persistentvolumeclaims
+      - componentstatuses
     verbs: ["get", "list", "watch"]
+
+  # Apps resources
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+
+  # Networking resources
   - apiGroups: ["extensions", "networking.k8s.io"]
     resources:
       - ingresses
+      - networkpolicies
     verbs: ["get", "list", "watch"]
-  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+
+  # Autoscaling resources
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+
+  # Batch resources
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+
+  # Storage resources
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+      - volumeattachments
+    verbs: ["get", "list", "watch"]
+
+  # RBAC resources (para monitorar permissões)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list", "watch"]
+
+  # Policy resources
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch"]
+
+  # Coordination resources (para leader election se necessário)
+  - apiGroups: ["coordination.k8s.io"]
+    resources:
+      - leases
+    verbs: ["get", "list", "watch"]
+
+  # Metrics and monitoring endpoints
+  - nonResourceURLs:
+      - "/metrics"
+      - "/metrics/cadvisor"
+      - "/metrics/resource"
+      - "/metrics/probes"
+      - "/api/v1/nodes/*/proxy/metrics"
+      - "/api/v1/nodes/*/proxy/metrics/cadvisor"
+      - "/api/v1/nodes/*/proxy/metrics/resource"
+      - "/api/v1/nodes/*/proxy/metrics/probes"
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: alloy
+  name: {{ .Values.alloy.name }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: alloy
+  name: {{ .Values.alloy.name }}
 subjects:
   - kind: ServiceAccount
-    name: alloy
-    namespace: api-app-go
+    name: {{ .Values.alloy.name }}
+    namespace: {{ .Values.global.namespace }}
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: alloy-config
-  namespace: api-app-go
+  name: {{ .Values.alloy.name }}-config
+  namespace: {{ .Values.global.namespace }}
 data:
   alloy.yaml: |
     logging {
-      level  = "info"
-      format = "json"
+      level  = "{{ .Values.alloy.config.logging.level }}"
+      format = "{{ .Values.alloy.config.logging.format }}"
     }
+
+    {{- if eq .Values.alloy.controller.type "daemonset" }}
+    // ========================================
+    // NODE EXPORTER CONFIGURATION (DaemonSet)
+    // ========================================
+    // Quando rodando como DaemonSet com hostVolumes, o Alloy pode
+    // coletar métricas similares ao node-exporter diretamente do host.
+    // Exemplo de configuração adicional:
+
+    // prometheus.exporter.unix "node" {
+    //   procfs_path = "/host/proc"
+    //   sysfs_path  = "/host/sys"
+    //   rootfs_path = "/host/rootfs"
+    // }
+
+    // prometheus.scrape "node_metrics" {
+    //   targets    = prometheus.exporter.unix.node.targets
+    //   forward_to = [prometheus.remote_write.mimir.receiver]
+    // }
+
+    // 🚫 TEMPORARIAMENTE DESABILITADO: systemd journal não disponível em Kind
+    // loki.source.journal "node_journal" {
+    //   forward_to = [loki.relabel.node_logs.receiver]
+    //   labels     = {
+    //     job     = "integrations/node-journal",
+    //     cluster = env("CLUSTER_NAME"),
+    //     node    = env("NODE_NAME"),
+    //   }
+    // }
+
+    // 🚫 TEMPORARIAMENTE DESABILITADO: Processamento dos logs de journal/systemd
+    // loki.relabel "node_logs" {
+    //   forward_to = [loki.write.loki.receiver]
+    //
+    //   rule {
+    //     source_labels = ["__journal__hostname"]
+    //     target_label  = "hostname"
+    //   }
+    //
+    //   rule {
+    //     source_labels = ["__journal__systemd_unit"]
+    //     target_label  = "unit"
+    //   }
+    //
+    //   rule {
+    //     source_labels = ["__journal_priority_keyword"]
+    //     target_label  = "level"
+    //   }
+    // }
+
+    // 🚫 TEMPORARIAMENTE DESABILITADO: Arquivos de sistema não existem no Kind
+    // loki.source.file "system_logs" {
+    //   targets = [
+    //     {__path__ = "/var/log/syslog", job = "system/syslog"},
+    //     {__path__ = "/var/log/kern.log", job = "system/kernel"},
+    //     {__path__ = "/var/log/auth.log", job = "system/auth"},
+    //     {__path__ = "/var/log/messages", job = "system/messages"},
+    //   ]
+    //   forward_to = [loki.relabel.system_logs.receiver]
+    // }
+
+    // 🚫 TEMPORARIAMENTE DESABILITADO: Relabel para arquivos inexistentes
+    // loki.relabel "system_logs" {
+    //   forward_to = [loki.write.loki.receiver]
+    //
+    //   rule {
+    //     target_label = "cluster"
+    //     replacement  = env("CLUSTER_NAME")
+    //   }
+    //
+    //   rule {
+    //     target_label = "node"
+    //     replacement  = env("NODE_NAME")
+    //   }
+    //
+    //   rule {
+    //     source_labels = ["__meta_filepath"]
+    //     target_label  = "filename"
+    //   }
+    //
+    //   rule {
+    //     source_labels = ["job"]
+    //     target_label  = "source"
+    //   }
+    // }
+    {{- end }}
 
     // Descoberta de pods Kubernetes para logs
     discovery.kubernetes "pods" {
       role = "pod"
+      {{- if not .Values.alloy.config.logs.allNamespaces }}
       namespaces {
-        names = ["api-app-go"]
+        names = ["{{ .Values.global.namespace }}"]
       }
+      {{- end }}
     }
 
     // Adicionar labels dos metadados do Kubernetes
@@ -90,6 +254,15 @@ data:
         replacement = "kubernetes-pods"
       }
 
+      rule {
+        source_labels = ["__meta_kubernetes_node_name"]
+        target_label  = "node"
+      }
+
+      rule {
+        target_label = "cluster"
+        replacement  = env("CLUSTER_NAME")
+      }
       // Garantir que pods sem label app tenham service baseado no nome do container
       rule {
         source_labels = ["__meta_kubernetes_pod_container_name"]
@@ -133,92 +306,272 @@ data:
     // Write para Loki (logs)
     loki.write "loki" {
       endpoint {
-        url = "http://loki:3100/loki/api/v1/push"
+        url = "http://{{ .Values.loki.name }}:{{ .Values.loki.ports.http }}/loki/api/v1/push"
       }
     }
 
-    // Configuração para coletar métricas internas do próprio Alloy
-    prometheus.exporter.self "alloy_metrics" { }
-
-    prometheus.scrape "alloy_self" {
-      targets    = prometheus.exporter.self.alloy_metrics.targets
-      forward_to = [prometheus.remote_write.mimir.receiver]
-      job_name   = "alloy"
-      scrape_interval = "30s"
+    // Receiver para profiling via push
+    pyroscope.receive_http "default" {
+      http {
+        listen_address = "0.0.0.0"
+        listen_port    = {{ .Values.alloy.ports.profiling | default 4040 }}
+      }
+      forward_to = [pyroscope.write.pyroscope.receiver]
     }
 
-    // Write para Mimir (métricas)
-    prometheus.remote_write "mimir" {
+    // Write para Pyroscope (profiling)
+    pyroscope.write "pyroscope" {
       endpoint {
-        url = "http://mimir.local/api/v1/push"
+        url = "http://{{ .Values.pyroscope.name }}:{{ .Values.pyroscope.ports.http }}"
       }
     }
 ---
+{{- if eq .Values.alloy.controller.type "daemonset" }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ .Values.alloy.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.alloy.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.alloy.name }}
+  template:
+{{- else if eq .Values.alloy.controller.type "statefulset" }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Values.alloy.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.alloy.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.alloy.replicaCount }}
+  serviceName: {{ .Values.alloy.name }}
+  selector:
+    matchLabels:
+      app: {{ .Values.alloy.name }}
+  template:
+{{- else }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: alloy
-  namespace: api-app-go
+  name: {{ .Values.alloy.name }}
+  namespace: {{ .Values.global.namespace }}
   labels:
-    app: alloy
+    app: {{ .Values.alloy.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.alloy.replicaCount }}
   selector:
     matchLabels:
-      app: alloy
+      app: {{ .Values.alloy.name }}
   template:
+{{- end }}
     metadata:
       labels:
-        app: alloy
+        app: {{ .Values.alloy.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
-      serviceAccountName: alloy
+      serviceAccountName: {{ .Values.alloy.name }}
+      {{- if eq .Values.alloy.controller.type "daemonset" }}
+      # 🔥 Configurações específicas para DaemonSet
+      hostNetwork: {{ .Values.alloy.controller.hostNetwork | default false }}
+      hostPID: {{ .Values.alloy.controller.hostPID | default false }}
+      dnsPolicy: {{ .Values.alloy.controller.dnsPolicy | default "ClusterFirst" }}
+      {{- if .Values.alloy.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml .Values.alloy.controller.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.alloy.controller.tolerations }}
+      tolerations:
+        {{- toYaml .Values.alloy.controller.tolerations | nindent 8 }}
+      {{- end }}
+      {{- end }}
       containers:
-        - name: alloy
-          image: grafana/alloy:v1.9.1
+        - name: {{ .Values.alloy.name }}
+          image: {{ .Values.alloy.image.repository }}:{{ .Values.alloy.image.tag }}
+          imagePullPolicy: {{ .Values.alloy.image.pullPolicy }}
           args:
             - run
             - /etc/alloy/alloy.yaml
             - --storage.path=/var/lib/alloy/data
+            {{- if .Values.alloy.stabilityLevel }}
+            - --stability.level={{ .Values.alloy.stabilityLevel }}
+            {{- end }}
+          env:
+            # 🎯 Auto-descoberta do node e cluster via Kubernetes API
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: CLUSTER_NAME
+              value: "{{ .Values.alloy.cluster.name | default "karavela-brrioln035606-cluster" }}"
           ports:
-            - containerPort: 12345
+            - containerPort: {{ .Values.alloy.ports.http }}
               name: http-metrics
+            - containerPort: {{ .Values.alloy.ports.profiling | default 4040 }}
+              name: profiling
           volumeMounts:
             - name: alloy-storage
               mountPath: /var/lib/alloy/data
             - name: alloy-config
               mountPath: /etc/alloy
               readOnly: true
+            {{- if eq .Values.alloy.controller.type "daemonset" }}
+            # 🔥 Volume mounts CRÍTICOS para coleta de logs e métricas de TODOS os nodes
+            # Logs de sistema e containers
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            # 🚫 DESABILITADO: Journal mounts (não usado em Kind)
+            # - name: runlogjournal
+            #   mountPath: /run/log/journal
+            #   readOnly: true
+            # - name: varlogjournal
+            #   mountPath: /var/log/journal
+            #   readOnly: true
+            # Métricas de sistema (opcionais)
+            {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            {{- end }}
+            {{- if .Values.alloy.daemonset.hostVolumes.sys.enabled }}
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            {{- end }}
+            {{- if .Values.alloy.daemonset.hostVolumes.rootfs.enabled }}
+            - name: rootfs
+              mountPath: /host/rootfs
+              readOnly: true
+            {{- end }}
+            {{- end }}
           resources:
-            limits:
-              memory: "256Mi"
-              cpu: "200m"
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
+            {{- toYaml .Values.alloy.resources | nindent 12 }}
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 473
-            allowPrivilegeEscalation: false
+            {{- if eq .Values.alloy.controller.type "daemonset" }}
+            # SecurityContext para DaemonSet (precisa de mais permissões)
+            runAsNonRoot: false
+            runAsUser: 0  # Root necessário para acessar /proc, /sys, /var/log no host
+            privileged: {{ .Values.alloy.controller.privileged | default true }}
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: false
+            capabilities:
+              add:
+                - SYS_PTRACE  # Para ler /proc
+                - SYS_ADMIN   # Para métricas de sistema
+                - DAC_READ_SEARCH  # Para ler arquivos do sistema
+                - SETUID      # Para mudanças de usuário
+                - SETGID      # Para mudanças de grupo
+              drop:
+                - NET_RAW
+            {{- else }}
+            # SecurityContext padrão para Deployment
+            runAsNonRoot: {{ .Values.alloy.securityContext.runAsNonRoot }}
+            runAsUser: {{ .Values.alloy.securityContext.runAsUser }}
+            allowPrivilegeEscalation: {{ .Values.alloy.securityContext.allowPrivilegeEscalation }}
             capabilities:
               drop:
-                - ALL
+                {{- toYaml .Values.alloy.securityContext.capabilities.drop | nindent 16 }}
+            {{- end }}
       volumes:
         - name: alloy-storage
+          {{- if eq .Values.alloy.controller.type "daemonset" }}
+          hostPath:
+            path: /var/lib/alloy/data
+            type: DirectoryOrCreate
+          {{- else }}
           emptyDir: {}
+          {{- end }}
         - name: alloy-config
           configMap:
-            name: alloy-config
+            name: {{ .Values.alloy.name }}-config
+        {{- if eq .Values.alloy.controller.type "daemonset" }}
+
+        # 🔥 VOLUMES CRÍTICOS para coleta de logs de TODOS os nodes
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+        # 🚫 DESABILITADO: Journal volumes (não usado em Kind)
+        # - name: runlogjournal
+        #   hostPath:
+        #     path: /run/log/journal
+        # - name: varlogjournal
+        #   hostPath:
+        #     path: /var/log/journal
+
+        # Volumes de host para coleta de métricas de sistema (opcionais)
+        {{- if .Values.alloy.daemonset.hostVolumes.proc.enabled }}
+        - name: proc
+          hostPath:
+            path: /proc
+        {{- end }}
+        {{- if .Values.alloy.daemonset.hostVolumes.sys.enabled }}
+        - name: sys
+          hostPath:
+            path: /sys
+        {{- end }}
+        {{- if .Values.alloy.daemonset.hostVolumes.rootfs.enabled }}
+        - name: rootfs
+          hostPath:
+            path: /
+        {{- end }}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: alloy
-  namespace: api-app-go
+  name: {{ .Values.alloy.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.alloy.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   ports:
     - name: http-metrics
       protocol: TCP
-      port: 12345
-      targetPort: 12345
+      port: {{ .Values.alloy.ports.http }}
+      targetPort: {{ .Values.alloy.ports.http }}
+    - name: profiling
+      protocol: TCP
+      port: {{ .Values.alloy.ports.profiling | default 4040 }}
+      targetPort: {{ .Values.alloy.ports.profiling | default 4040 }}
   selector:
-    app: alloy
+    app: {{ .Values.alloy.name }}
+{{- end }}

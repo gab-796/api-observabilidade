@@ -1,74 +1,176 @@
+{{- if .Values.grafana.enabled }}
+#############################################
+# GRAFANA CONFIGMAP (configs)               #
+#############################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.grafana.name }}-config
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.grafana.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  grafana.ini: |
+    [server]
+    root_url = {{ .Values.grafana.config.rootUrl | default "http://grafana-web.local" }}
+    [auth]
+    disable_login_form = {{ .Values.grafana.config.auth.anonymous.disableLoginForm }}
+    [dashboards]
+    default_home_dashboard_path = /var/lib/grafana/dashboards/inventory-dashboard.json
+
+  provisioning-dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'default'
+        orgId: 1
+        folder: '{{ .Values.grafana.dashboards.inventory.folder }}'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards
+
+---
+#############################################
+# GRAFANA DEPLOYMENT                       #
+#############################################
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: grafana
-  namespace: api-app-go
+  name: {{ .Values.grafana.name }}
+  namespace: {{ .Values.global.namespace }}
   labels:
-    app: grafana
+    app: {{ .Values.grafana.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.grafana.replicaCount }}
   selector:
     matchLabels:
-      app: grafana
+      app: {{ .Values.grafana.name }}
   template:
     metadata:
       labels:
-        app: grafana
+        app: {{ .Values.grafana.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ (printf "%s|%s" (.Values.grafana.config | toJson) (.Values.grafana.dashboards | toJson)) | sha256sum }}
+        checksum/datasources: {{ (.Values.grafana.datasources | toJson) | sha256sum }}
+        checksum/dashboard: {{ include (print $.Template.BasePath "/grafana-dashboard-inventory.yaml") . | sha256sum }}
     spec:
       containers:
-        - name: grafana
-          image: grafana/grafana:11.6.0
+        - name: {{ .Values.grafana.name }}
+          image: {{ .Values.grafana.image.repository }}:{{ .Values.grafana.image.tag }}
           ports:
-            - containerPort: 3000
+            - containerPort: {{ .Values.grafana.ports.http }}
           env:
-            # Habilitar acesso anônimo - SEM NECESSIDADE DE LOGIN
+            {{- if .Values.grafana.config.auth.anonymous.enabled }}
             - name: GF_AUTH_ANONYMOUS_ENABLED
-              value: "true"
+              value: {{ .Values.grafana.config.auth.anonymous.enabled | quote }}
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE
-              value: "Admin"
+              value: {{ .Values.grafana.config.auth.anonymous.orgRole | quote }}
             - name: GF_AUTH_DISABLE_LOGIN_FORM
-              value: "true"
+              value: {{ .Values.grafana.config.auth.anonymous.disableLoginForm | quote }}
             - name: GF_AUTH_DISABLE_SIGNOUT_MENU
-              value: "true"
+              value: {{ .Values.grafana.config.auth.anonymous.disableSignoutMenu | quote }}
+            {{- else }}
+            - name: GF_SECURITY_ADMIN_USER
+              value: {{ .Values.grafana.config.adminUser | quote }}
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: {{ .Values.grafana.config.adminPassword | quote }}
+            {{- end }}
             - name: GF_LOG_LEVEL
-              value: "warn"
+              value: {{ .Values.grafana.config.logLevel | quote }}
             - name: GF_FEATURE_TOGGLES_ENABLE
-              value: "traceqlEditor,metricsSummary"
+              value: {{ .Values.grafana.config.featureToggles | quote }}
+            {{- if .Values.grafana.config.plugins.install }}
             - name: GF_INSTALL_PLUGINS
-              value: "https://storage.googleapis.com/integration-artifacts/grafana-exploretraces-app/grafana-exploretraces-app-latest.zip;grafana-traces-app"
-            # Configurações adicionais para estabilidade
-            - name: GF_SERVER_ROOT_URL
-              value: "http://grafana-web.local"
+              value: {{ .Values.grafana.config.plugins.install | quote }}
+            {{- end }}
             - name: GF_USERS_ALLOW_SIGN_UP
-              value: "false"
+              value: {{ .Values.grafana.config.users.allowSignUp | quote }}
+            - name: GF_PATHS_PROVISIONING
+              value: /etc/grafana/provisioning
           volumeMounts:
             - name: grafana-storage
               mountPath: /var/lib/grafana
+            # Monta arquivos individuais da ConfigMap nos caminhos esperados pelo Grafana
+            - name: grafana-config
+              mountPath: /etc/grafana/grafana.ini
+              subPath: grafana.ini
+            - name: grafana-provisioning-dash
+              mountPath: /etc/grafana/provisioning/dashboards/provisioning-dashboards.yaml
+              subPath: provisioning-dashboards.yaml
             - name: grafana-datasources
-              mountPath: /etc/grafana/provisioning/datasources
-              readOnly: true
+              mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+              subPath: datasources.yaml
+            - name: dashboard-inventory
+              mountPath: /var/lib/grafana/dashboards
           resources:
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
+            {{- toYaml .Values.grafana.resources | nindent 12 }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: {{ .Values.grafana.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: {{ .Values.grafana.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
+          {{- end }}
       volumes:
         - name: grafana-storage
+          {{- if and .Values.grafana.persistence.enabled (not .Values.grafana.ephemeral.enabled) }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.grafana.name }}-pvc
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+        - name: grafana-config
+          configMap:
+            name: {{ .Values.grafana.name }}-config
+        - name: grafana-provisioning-dash
+          configMap:
+            name: {{ .Values.grafana.name }}-config
         - name: grafana-datasources
           configMap:
-            name: grafana-datasources
+            name: {{ .Values.grafana.name }}-datasources
+        - name: dashboard-inventory
+          configMap:
+            name: grafana-dashboard-inventory
 ---
+{{- if and .Values.grafana.enabled .Values.grafana.persistence.enabled }}
 apiVersion: v1
-kind: Service
+kind: PersistentVolumeClaim
 metadata:
-  name: grafana
-  namespace: api-app-go
+  name: {{ .Values.grafana.name }}-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.grafana.name }}
 spec:
-  ports:
-    - port: 3000
-      targetPort: 3000
-  selector:
-    app: grafana
+  accessModes:
+    {{- range .Values.grafana.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.grafana.persistence.size | default "5Gi" | quote }}
+  {{- if .Values.grafana.persistence.storageClass }}
+  {{- if (eq "-" .Values.grafana.persistence.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: "{{ .Values.grafana.persistence.storageClass }}"
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}
+

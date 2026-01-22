@@ -1,0 +1,165 @@
+{{- if .Values.inventoryApp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.inventoryApp.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.inventoryApp.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.inventoryApp.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Values.inventoryApp.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.inventoryApp.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "api-observabilidade.serviceAccountName" . }}
+      {{- end }}
+      containers:
+        - name: {{ .Values.inventoryApp.name }}
+          image: {{ .Values.inventoryApp.image.repository }}:{{ .Values.inventoryApp.image.tag }}
+          imagePullPolicy: {{ .Values.inventoryApp.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.inventoryApp.ports.http }}
+              name: http
+            - containerPort: {{ .Values.inventoryApp.ports.metrics }}
+              name: metrics
+          resources:
+            {{- toYaml .Values.inventoryApp.resources | nindent 12 }}
+          env:
+            - name: DB_USER
+              value: {{ .Values.mysql.config.user | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.inventoryApp.name }}-secrets
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              value: {{ .Values.mysql.config.database | quote }}
+            - name: DB_HOST
+              value: "{{ .Values.mysql.name }}-service"
+            {{- range $key, $value := .Values.inventoryApp.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.inventoryApp.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.inventoryApp.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.inventoryApp.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+  - port: {{ .Values.inventoryApp.ports.http }}
+    targetPort: {{ .Values.inventoryApp.ports.http }}
+    name: http
+  selector:
+    app: {{ .Values.inventoryApp.name }}
+  type: {{ .Values.services.type }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-app-metrics-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.inventoryApp.name }}
+    service: metrics
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ports:
+  - port: {{ .Values.inventoryApp.ports.metrics }}
+    targetPort: {{ .Values.inventoryApp.ports.metrics }}
+    name: metrics
+  selector:
+    app: {{ .Values.inventoryApp.name }}
+  type: {{ .Values.services.type }}
+---
+{{- if .Values.inventoryApp.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.inventoryApp.name }}-ingress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.inventoryApp.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.inventoryApp.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.inventoryApp.ingress.ingressClassName | default "nginx" }}
+  rules:
+    - host: {{ .Values.inventoryApp.ingress.host | default "inventory.local" }}
+      http:
+        paths:
+          # Aplicação principal
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: inventory-service
+                port:
+                  number: {{ .Values.inventoryApp.ports.http }}
+          {{- if .Values.inventoryApp.ingress.exposeMetrics }}
+          # Path para métricas (opcional)
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: inventory-app-metrics-service
+                port:
+                  number: {{ .Values.inventoryApp.ports.metrics }}
+          {{- end }}
+  {{- if .Values.inventoryApp.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.inventoryApp.ingress.host | default "inventory.local" }}
+      secretName: {{ .Values.inventoryApp.name }}-tls
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,15 +1,15 @@
----
+{{- if .Values.pyroscope.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pyroscope-config
-  namespace: api-app-go
+  name: {{ .Values.pyroscope.name }}-config
+  namespace: {{ .Values.global.namespace }}
 data:
   config.yaml: |
     server:
-      http_listen_port: 4040
-      grpc_listen_port: 4041
-      log_level: warn
+      http_listen_port: {{ .Values.pyroscope.ports.http }}
+      grpc_listen_port: {{ .Values.pyroscope.ports.grpc }}
+      log_level: {{ .Values.pyroscope.config.server.logLevel }}
 
     memberlist:
       bind_port: 7946
@@ -27,97 +27,107 @@ data:
           store: memberlist
 
     storage:
-      backend: filesystem
+      backend: {{ .Values.pyroscope.config.storage.backend }}
       filesystem:
-        dir: /var/lib/pyroscope
+        dir: {{ .Values.pyroscope.config.storage.filesystem.path }}
+
+    limits: {}
+    analytics:
+      reporting_enabled: false
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pyroscope
-  namespace: api-app-go
+  name: {{ .Values.pyroscope.name }}
+  namespace: {{ .Values.global.namespace }}
   labels:
-    app: pyroscope
+    app: {{ .Values.pyroscope.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.pyroscope.replicaCount }}
   selector:
     matchLabels:
-      app: pyroscope
+      app: {{ .Values.pyroscope.name }}
   template:
     metadata:
       labels:
-        app: pyroscope
+        app: {{ .Values.pyroscope.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       securityContext:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
       containers:
-        - name: pyroscope
-          image: grafana/pyroscope:1.13.0
+        - name: {{ .Values.pyroscope.name }}
+          image: {{ .Values.pyroscope.image.repository }}:{{ .Values.pyroscope.image.tag }}
+          imagePullPolicy: {{ .Values.pyroscope.image.pullPolicy }}
           args:
             - -config.file=/etc/pyroscope/config.yaml
+            - -log.level={{ .Values.pyroscope.config.server.logLevel }}
           ports:
-            - containerPort: 4040
+            - containerPort: {{ .Values.pyroscope.ports.http }}
               name: http
-            - containerPort: 4041
+            - containerPort: {{ .Values.pyroscope.ports.grpc }}
               name: grpc
             - containerPort: 7946
               name: memberlist
           volumeMounts:
             - name: pyroscope-storage
-              mountPath: /var/lib/pyroscope
+              mountPath: {{ .Values.pyroscope.config.storage.filesystem.path }}
             - name: pyroscope-config
               mountPath: /etc/pyroscope
               readOnly: true
           resources:
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
+            {{- toYaml .Values.pyroscope.resources | nindent 12 }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: 4040
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+              port: {{ .Values.pyroscope.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /ready
-              port: 4040
-            initialDelaySeconds: 60
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 5
+              port: {{ .Values.pyroscope.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
+          {{- end }}
       volumes:
         - name: pyroscope-storage
           emptyDir: {}
         - name: pyroscope-config
           configMap:
-            name: pyroscope-config
+            name: {{ .Values.pyroscope.name }}-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: pyroscope
-  namespace: api-app-go
+  name: {{ .Values.pyroscope.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.pyroscope.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   ports:
     - name: http
       protocol: TCP
-      port: 4040
-      targetPort: 4040
+      port: {{ .Values.pyroscope.ports.http }}
+      targetPort: {{ .Values.pyroscope.ports.http }}
     - name: grpc
       protocol: TCP
-      port: 4041
-      targetPort: 4041
+      port: {{ .Values.pyroscope.ports.grpc }}
+      targetPort: {{ .Values.pyroscope.ports.grpc }}
     - name: memberlist
       protocol: TCP
       port: 7946
       targetPort: 7946
   selector:
-    app: pyroscope
+    app: {{ .Values.pyroscope.name }}
+  type: {{ .Values.services.type }}
+{{- end }}

@@ -1,0 +1,117 @@
+---
+{{- if .Values.grafana.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-stack-ingress
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.grafana.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.grafana.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.grafana.ingress.ingressClassName | default "nginx" }}
+  rules:
+    {{- range .Values.grafana.ingress.hosts }}
+    - host: {{ .host }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ .service.name }}
+                port:
+                  number: {{ .service.port }}
+          {{- end }}
+    {{- end }}
+
+    {{- if .Values.grafana.ingress.exposeStack }}
+    # Mimir (métricas)
+    {{- if .Values.mimir.enabled }}
+    - host: {{ .Values.grafana.ingress.hosts.mimir | default "mimir.local" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.mimir.name }}
+                port:
+                  number: {{ .Values.mimir.config.internalMetricsPort | default 9009 }}
+    {{- end }}
+
+    # Alloy (coleta)
+    {{- if .Values.alloy.enabled }}
+    - host: {{ .Values.grafana.ingress.hosts.alloy | default "alloy.local" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.alloy.name }}
+                port:
+                  number: {{ .Values.alloy.ports.http }}
+    {{- end }}
+
+    # Tempo (traces)
+    {{- if .Values.tempo.enabled }}
+    - host: {{ .Values.grafana.ingress.hosts.tempo | default "grafana-tempo.local" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.tempo.name }}
+                port:
+                  number: {{ .Values.tempo.ports.http }}
+    {{- end }}
+
+    # Pyroscope (profiling)
+    {{- if .Values.pyroscope.enabled }}
+    - host: {{ .Values.grafana.ingress.hosts.pyroscope | default "pyroscope.local" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.pyroscope.name }}
+                port:
+                  number: {{ .Values.pyroscope.ports.http }}
+    {{- end }}
+
+    # Loki (logs)
+    {{- if .Values.loki.enabled }}
+    - host: {{ .Values.grafana.ingress.hosts.loki | default "grafana-loki.local" }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.loki.name }}
+                port:
+                  number: {{ .Values.loki.ports.http }}
+    {{- end }}
+    {{- end }}
+
+  {{- if .Values.grafana.ingress.tls }}
+  tls:
+    {{- range .Values.grafana.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+{{- end }}

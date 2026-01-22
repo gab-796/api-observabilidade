@@ -1,23 +1,23 @@
----
+{{- if .Values.loki.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: loki-config
-  namespace: api-app-go
+  name: {{ .Values.loki.name }}-config
+  namespace: {{ .Values.global.namespace }}
 data:
   config.yaml: |
-    auth_enabled: false
+    auth_enabled: {{ .Values.loki.config.authEnabled }}
 
     server:
-      http_listen_port: 3100
-      log_level: warn
+      http_listen_port: {{ .Values.loki.ports.http }}
+      log_level: {{ .Values.loki.config.server.logLevel }}
 
     common:
       path_prefix: /loki
       storage:
         filesystem:
-          chunks_directory: /loki/chunks
-          rules_directory: /loki/rules
+          chunks_directory: {{ .Values.loki.config.storage.filesystem.chunksDirectory }}
+          rules_directory: {{ .Values.loki.config.storage.filesystem.rulesDirectory }}
       replication_factor: 1
       ring:
         instance_addr: 127.0.0.1
@@ -28,7 +28,7 @@ data:
       configs:
         - from: 2020-10-24
           store: boltdb-shipper
-          object_store: filesystem
+          object_store: {{ .Values.loki.config.storage.type }}
           schema: v11
           index:
             prefix: index_
@@ -38,9 +38,9 @@ data:
       boltdb_shipper:
         active_index_directory: /loki/boltdb-shipper-active
         cache_location: /loki/boltdb-shipper-cache
-        shared_store: filesystem
+        shared_store: {{ .Values.loki.config.storage.type }}
       filesystem:
-        directory: /loki/chunks
+        directory: {{ .Values.loki.config.storage.filesystem.chunksDirectory }}
 
     limits_config:
       enforce_metric_name: false
@@ -60,7 +60,7 @@ data:
       storage:
         type: local
         local:
-          directory: /loki/rules
+          directory: {{ .Values.loki.config.storage.filesystem.rulesDirectory }}
       rule_path: /loki/rules-temp
       alertmanager_url: http://localhost:9093
       ring:
@@ -68,31 +68,69 @@ data:
           store: inmemory
       enable_api: true
 ---
+{{- if .Values.loki.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.loki.name }}-pvc
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.loki.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    {{- range .Values.loki.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.loki.persistence.size | quote }}
+  {{- if .Values.loki.persistence.storageClass }}
+  {{- if (eq "-" .Values.loki.persistence.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: "{{ .Values.loki.persistence.storageClass }}"
+  {{- end }}
+  {{- end }}
+---
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: loki
-  namespace: api-app-go
+  name: {{ .Values.loki.name }}
+  namespace: {{ .Values.global.namespace }}
   labels:
-    app: loki
+    app: {{ .Values.loki.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.loki.replicaCount }}
   selector:
     matchLabels:
-      app: loki
+      app: {{ .Values.loki.name }}
   template:
     metadata:
       labels:
-        app: loki
+        app: {{ .Values.loki.name }}
+        {{- with .Values.commonLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       containers:
-        - name: loki
-          image: grafana/loki:2.9.5
+        - name: {{ .Values.loki.name }}
+          image: {{ .Values.loki.image.repository }}:{{ .Values.loki.image.tag }}
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config.yaml
+            - -log.level={{ .Values.loki.config.server.logLevel }}
           ports:
-            - containerPort: 3100
+            - containerPort: {{ .Values.loki.ports.http }}
               name: http
+            - containerPort: {{ .Values.loki.ports.grpc }}
+              name: grpc
           volumeMounts:
             - name: loki-storage
               mountPath: /loki
@@ -100,45 +138,52 @@ spec:
               mountPath: /etc/loki
               readOnly: true
           resources:
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
+            {{- toYaml .Values.loki.resources | nindent 12 }}
+          {{- if .Values.monitoring.healthChecks.enabled }}
           readinessProbe:
             httpGet:
               path: /ready
-              port: 3100
-            initialDelaySeconds: 15
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
+              port: {{ .Values.loki.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.readinessProbe | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /ready
-              port: 3100
-            initialDelaySeconds: 30
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
+              port: {{ .Values.loki.ports.http }}
+            {{- toYaml .Values.monitoring.healthChecks.livenessProbe | nindent 12 }}
+          {{- end }}
       volumes:
         - name: loki-storage
+          {{- if .Values.loki.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.loki.name }}-pvc
+          {{- else }}
           emptyDir: {}
+          {{- end }}
         - name: loki-config
           configMap:
-            name: loki-config
+            name: {{ .Values.loki.name }}-config
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: loki
-  namespace: api-app-go
+  name: {{ .Values.loki.name }}
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: {{ .Values.loki.name }}
+    {{- with .Values.commonLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   ports:
     - name: http
       protocol: TCP
-      port: 3100
-      targetPort: 3100
+      port: {{ .Values.loki.ports.http }}
+      targetPort: {{ .Values.loki.ports.http }}
+    - name: grpc
+      protocol: TCP
+      port: {{ .Values.loki.ports.grpc }}
+      targetPort: {{ .Values.loki.ports.grpc }}
   selector:
-    app: loki
+    app: {{ .Values.loki.name }}
+  type: {{ .Values.services.type }}
+{{- end }}

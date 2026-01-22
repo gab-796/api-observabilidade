@@ -1,0 +1,9 @@
+A função `sendError` é responsável por tratar cenários de erro de forma padronizada. Ela recebe o ResponseWriter, a Request, um código de status HTTP e um erro.
+Internamente, utiliza o sistema de logging estruturado do Logrus para registrar detalhes do erro, incluindo campos como componente, status e mensagem de erro.
+Após o logging, define o cabeçalho Content-Type como JSON, escreve o código de status HTTP e serializa uma resposta JSON contendo a mensagem de erro. 
+
+Um ponto importante é que esta função extrai o contexto diretamente da requisição HTTP usando r.Context().
+
+A função sendResponse gerencia respostas de sucesso e tem uma abordagem mais robusta para tratamento de erros. Ela recebe um contexto explícito, o ResponseWriter, código de status e os dados a serem enviados. Similar à função de erro, ela configura logging estruturado e define os cabeçalhos apropriados. No entanto, há uma verificação crucial: apenas serializa dados se eles não forem nil. Caso ocorra um erro durante a serialização JSON, a função registra o erro e retorna imediatamente, evitando respostas corrompidas. Em caso de sucesso, registra uma mensagem de debug.
+
+Uma diferença arquitetural importante entre as funções é que sendError não verifica se houve erro na serialização JSON, enquanto sendResponse implementa essa verificação. Isso pode ser considerado uma inconsistência que merece atenção, pois erros de serialização na função de erro poderiam passar despercebidos. Além disso, ambas as funções assumem que o cliente espera respostas em formato JSON, o que pode não ser apropriado para todos os cenários de uma aplicação web.

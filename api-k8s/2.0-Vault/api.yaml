@@ -1,0 +1,106 @@
+# API Inventory - All-in-One Configuration
+# Este arquivo consolida todos os recursos da API em um único manifesto
+# Usando External Secrets Operator para injetar secrets do Vault como env vars
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-app-go
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: inventory-app
+  namespace: api-app-go
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-config
+  namespace: api-app-go
+data:
+  DB_USER: root
+  DB_NAME: inventory
+  DB_HOST: mysql
+  MYSQL_DATABASE: inventory
+  OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector-service.api-app-go:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  # Secrets sensíveis (MYSQL_ROOT_PASSWORD, DB_PASSWORD) são gerenciadas pelo Vault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-service
+  namespace: api-app-go
+spec:
+  selector:
+    app: inventory-app
+  ports:
+  - protocol: TCP
+    port: 10000
+    targetPort: 10000
+    name: http
+  type: ClusterIP
+---
+# Service dedicado para métricas Prometheus (porta 2113)
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-app-metrics-service
+  namespace: api-app-go
+spec:
+  selector:
+    app: inventory-app
+  ports:
+  - protocol: TCP
+    port: 2113
+    targetPort: 2113
+    name: metrics
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-app
+  namespace: api-app-go
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-app
+  template:
+    metadata:
+      labels:
+        app: inventory-app
+    spec:
+      serviceAccountName: inventory-app
+      containers:
+        - name: inventory-app
+          image: gab796/inventory_app:v4.0  # Imagem scratch original - sem modificações!
+          ports:
+            - containerPort: 10000
+              name: http
+            - containerPort: 2113
+              name: metrics
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+          env:
+            # Secrets injetadas pelo External Secrets Operator
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: MYSQL_ROOT_PASSWORD
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-secrets
+                  key: DB_PASSWORD
+          envFrom:
+            - configMapRef:
+                name: inventory-config
