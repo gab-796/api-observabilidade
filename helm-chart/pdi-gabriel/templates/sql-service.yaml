@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql  # Nome do serviço do MySQL
+  namespace: api-app-go
+spec:
+  selector:
+    app: mysql  # Seletor para os pods do MySQL
+  ports:
+  - protocol: TCP
+    port: 3306  # Porta do MySQL
+    targetPort: 3306
+  type: ClusterIP

@@ -13,7 +13,7 @@
 # as it would be passed to the shell, and the shell doesn't know anything about ifneq.
 # the same is valid to comments and any make commands.
 
-CLUSTER_NAME = $(shell echo karavela-$(shell hostname) | tr '[:upper:]' '[:lower:]')
+CLUSTER_NAME = asus
 CLUSTER_EXISTS = $(shell kind get clusters -q | grep $(CLUSTER_NAME))
 
 # DOCKER_SUBNET should be a valid ipv4 address.
@@ -83,7 +83,7 @@ install-opentelemetry-demo:
 	helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 	helm upgrade --install opentelemetry-demo observability-helm-charts/observability-generator-otlp-demo --namespace observability-generator-otlp --create-namespace -f charts/observability-generator-otlp-demo/values-local.yaml
 
-install-dependencies: install-cilium install-metrics-server install-metallb install-ingress-nginx install-opentelemetry-demo install-kube-state-metrics
+install-dependencies: install-cilium install-metrics-server install-metallb install-ingress-nginx  install-kube-state-metrics
 
 .create-cluster:
     # Check if the cluster exists

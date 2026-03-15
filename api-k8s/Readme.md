@@ -58,3 +58,10 @@ OU
 ## Dependências da v3.0
 - Crie a secret com a sua apikey do DD:
 `kubectl create secret generic datadog-api-key --from-literal=DD_API_KEY_GO_LAB=sua_chave_de_api_aqui`
+
+---
+
+## Instalação em cluster vagrant
+1. Será necessário instalar o metallb para que seja criado um IP fixo para que o ingress o use
+2. Instale o ingress
+3. 

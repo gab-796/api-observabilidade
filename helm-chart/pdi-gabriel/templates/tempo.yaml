@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: api-app-go
+  labels:
+    app: tempo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.6.0
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+          ports:
+            - containerPort: 4317 # Porta para OTLP gRPC
+            - containerPort: 4318 # Porta para OTLP HTTP
+          env:
+            - name: TEMPO_GRPC_LISTEN_PORT
+              value: "9095" # Porta usada para os componentes do Tempo se conversarem.
+          volumeMounts:
+            - name: tempo-storage
+              mountPath: /var/tempo
+            - name: tempo-config
+              mountPath: /etc/tempo
+              readOnly: true
+      volumes:
+        - name: tempo-storage
+          emptyDir: {}
+        - name: tempo-config
+          configMap:
+            name: tempo-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: api-app-go
+spec:
+  ports:
+    - name: http # Nome obrigatório
+      protocol: TCP
+      port: 3200
+      targetPort: 3200
+    - name: grpc # Nome obrigatório
+      protocol: TCP
+      port: 4317
+      targetPort: 4317
+  selector:
+    app: tempo
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: api-app-go
+data:
+  tempo.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3200
+      grpc_listen_port: 9095
+      log_level: warn
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+    ingester:
+      trace_idle_period: 10s
+      max_block_bytes: 5242880
+      max_block_duration: 5m
+
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo
+        wal:
+          path: /var/tempo/wal

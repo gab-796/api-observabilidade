@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-config
+  namespace: api-app-go
+data:
+  DB_USER: root
+  DB_NAME: inventory
+  DB_HOST: mysql
+  MYSQL_ROOT_PASSWORD: admin # essas duas linhas são para uso do pod do mysql.
+  MYSQL_DATABASE: inventory
+  OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector-service.api-app-go:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+
+# Aqui fica armazenado todas as env vars que o container da aplicação precisa.
+# É uma forma mais organizada de usar as env vars., pois se não ficariam todas no deployment.yaml. na seção de env.
+# o DB Password está na api-secret.yaml e é consultado pelo campo envFrom do api-deployment.yaml.
